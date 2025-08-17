@@ -8,23 +8,50 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
-    container: golangci/golangci-lint:latest-alpine
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: make tools
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Load Go cache
+        id: load-go-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+            ~\AppData\Local\go-build
+          key: ${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-main-${{ hashFiles('**/go.sum') }}
+            ${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Change modtime of files to 1 unix timestamp
+        shell: bash
+        run: |
+          excluded='-path "**/.out*" -or -path "**/.git/**"'
+          find . -not \( $excluded \) -type f -print0 | xargs -0 touch -d '1970-01-01T00:00:01'
 
       - name: Generate code
         run: make generate
 
-      - name: Run checks
-        run: make lint test
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          install-mode: goinstall
+          version: latest
 
   test:
     name: Unit Test
@@ -33,11 +60,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: make tools
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Load Go cache
+        id: load-go-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+            ~\AppData\Local\go-build
+          key: ${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-main-${{ hashFiles('**/go.sum') }}
+            ${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Change modtime of files to 1 unix timestamp
+        shell: bash
+        run: |
+          excluded='-path "**/.out*" -or -path "**/.git/**"'
+          find . -not \( $excluded \) -type f -print0 | xargs -0 touch -d '1970-01-01T00:00:01'
 
       - name: Generate code
         run: make generate
 
       - name: Run tests
         run: make test
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
