@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    container: golangci/golangci-lint:latest-alpine
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: make tools
+
+      - name: Generate code
+        run: make generate
+
+      - name: Run checks
+        run: make lint test
+
+  test:
+    name: Unit Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: make tools
+
+      - name: Generate code
+        run: make generate
+
+      - name: Run tests
+        run: make test
+
+
