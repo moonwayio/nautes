@@ -55,6 +55,7 @@ linters:
         linters:
           - gocognit # allow higher cognitive complexity in examples
           - funlen # allow longer functions in examples
+          - maintidx # disable maintidx in examples
 
 formatters:
   enable:

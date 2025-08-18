@@ -5,7 +5,7 @@ include $(ROOT_DIR)/scripts/make/pre-commit.mk
 
 .PHONY: tools
 ## Install development tools
-tools: pre-commit.install _mockery.tools
+tools: pre-commit.install
 	@echo "Installing development tools..."
 	@if ! command -v golangci-lint >/dev/null; then \
 		echo "Installing golangci-lint..."; \
@@ -15,7 +15,7 @@ tools: pre-commit.install _mockery.tools
 
 .PHONY: generate
 ## Generate code
-generate:
+generate: _mockery.tools
 	@$(MAKE) mockery.generate || true
 	@go generate ./...
 

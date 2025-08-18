@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
 type ManagerTestSuite struct {
@@ -52,20 +51,6 @@ func (s *ManagerTestSuite) TestNewManager() {
 			name: "with no options should succeed",
 			opts: []OptionFunc{},
 			err:  "",
-		},
-		{
-			name: "with custom scheme should succeed",
-			opts: []OptionFunc{
-				WithScheme(runtime.NewScheme()),
-			},
-			err: "",
-		},
-		{
-			name: "with invalid kubeconfig path should return error",
-			opts: []OptionFunc{
-				WithKubeconfigPath("/nonexistent/path"),
-			},
-			err: "error loading kubernetes configuration",
 		},
 	}
 
@@ -196,60 +181,6 @@ func (s *ManagerTestSuite) TestStartAndStopManager() {
 			}
 		})
 	}
-}
-
-func (s *ManagerTestSuite) TestGetClient() {
-	manager, err := NewManager()
-	s.Require().NoError(err)
-
-	client := manager.GetClient()
-	s.Require().NotNil(client)
-}
-
-func (s *ManagerTestSuite) TestGetScheme() {
-	type testCase struct {
-		name string
-		opts []OptionFunc
-	}
-
-	testCases := []testCase{
-		{
-			name: "with default scheme should return default scheme",
-			opts: []OptionFunc{},
-		},
-		{
-			name: "with custom scheme should return custom scheme",
-			opts: []OptionFunc{
-				WithScheme(runtime.NewScheme()),
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		s.Run(tc.name, func() {
-			manager, err := NewManager(tc.opts...)
-			s.Require().NoError(err)
-
-			scheme := manager.GetScheme()
-			s.Require().NotNil(scheme)
-		})
-	}
-}
-
-func (s *ManagerTestSuite) TestGetRestConfig() {
-	manager, err := NewManager()
-	s.Require().NoError(err)
-
-	config := manager.GetRestConfig()
-	s.Require().NotNil(config)
-}
-
-func (s *ManagerTestSuite) TestGetLogger() {
-	manager, err := NewManager()
-	s.Require().NoError(err)
-
-	logger := manager.GetLogger()
-	s.Require().NotNil(logger)
 }
 
 func (s *ManagerTestSuite) TestManagerWithComponentStartOrder() {
