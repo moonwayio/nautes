@@ -38,7 +38,7 @@ test:
 .PHONY: test-ci
 ## Run tests for CI
 test-ci:
-	@go test ./... -covermode=count -coverprofile=coverage.txt -timeout 30s -race -v -count=1
+	@go test ./... -covermode=atomic -coverprofile=coverage.txt -timeout 30s -race -v -count=1
 
 .PHONY: clean
 ## Clean up
