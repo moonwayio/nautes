@@ -87,7 +87,7 @@ func (c *controller) AddRetriever(retriever Retriever) error {
 	informer := cache.NewSharedIndexInformer(lw, nil, c.opts.resyncInterval, store)
 
 	_, err := informer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
+		AddFunc: func(obj any) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err != nil {
 				c.logger.Info("could not add item from 'add' event to queue", "error", err)
@@ -95,7 +95,7 @@ func (c *controller) AddRetriever(retriever Retriever) error {
 			}
 			c.queue.Add(key)
 		},
-		UpdateFunc: func(_, newObj interface{}) {
+		UpdateFunc: func(_, newObj any) {
 			key, err := cache.MetaNamespaceKeyFunc(newObj)
 			if err != nil {
 				c.logger.Info("could not add item from 'update' event to queue", "error", err)
@@ -103,7 +103,7 @@ func (c *controller) AddRetriever(retriever Retriever) error {
 			}
 			c.queue.Add(key)
 		},
-		DeleteFunc: func(obj interface{}) {
+		DeleteFunc: func(obj any) {
 			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 			if err != nil {
 				c.logger.Info("could not add item from 'delete' event to queue", "error", err)
