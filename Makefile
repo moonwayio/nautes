@@ -33,7 +33,7 @@ modcheck: tidy
 .PHONY: test
 ## Run tests
 test:
-	@go test ./... -covermode=count -coverprofile=coverage.txt -timeout 30s -v
+	@go test ./... -covermode=count -coverprofile=coverage.txt -timeout 30s
 
 .PHONY: test-ci
 ## Run tests for CI
