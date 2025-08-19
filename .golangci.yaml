@@ -39,10 +39,6 @@ linters:
     - tparallel
     - unused
     - wrapcheck
-  settings:
-    wrapcheck:
-      extra-ignore-sigs:
-        - status.Error(
   exclusions:
     rules:
       - path: _test\.go
@@ -63,6 +59,10 @@ formatters:
     - gofumpt
     - goimports
     - golines
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/moonwayio/nautes
 
 run:
   timeout: 5m
