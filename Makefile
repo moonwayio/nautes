@@ -2,10 +2,11 @@ ROOT_DIR := $(shell git rev-parse --show-toplevel)
 include $(ROOT_DIR)/scripts/make/help.mk
 include $(ROOT_DIR)/scripts/make/mockery.mk
 include $(ROOT_DIR)/scripts/make/pre-commit.mk
+include $(ROOT_DIR)/scripts/make/vuln.mk
 
 .PHONY: tools
 ## Install development tools
-tools: pre-commit.install
+tools:
 	@echo "Installing development tools..."
 	@if ! command -v golangci-lint >/dev/null; then \
 		echo "Installing golangci-lint..."; \
@@ -15,7 +16,7 @@ tools: pre-commit.install
 
 .PHONY: generate
 ## Generate code
-generate: _mockery.tools
+generate:
 	@$(MAKE) mockery.generate || true
 	@go generate ./...
 
@@ -32,7 +33,12 @@ modcheck: tidy
 .PHONY: test
 ## Run tests
 test:
-	@go test ./... -covermode=count -coverprofile=coverage.txt -timeout 10s
+	@go test ./... -covermode=count -coverprofile=coverage.txt -timeout 30s -v
+
+.PHONY: test-ci
+## Run tests for CI
+test-ci:
+	@go test ./... -covermode=count -coverprofile=coverage.txt -timeout 30s -race -v -count=1
 
 .PHONY: clean
 ## Clean up
