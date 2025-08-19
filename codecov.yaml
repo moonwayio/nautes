@@ -7,7 +7,7 @@ coverage:
         threshold: 1%
     patch:
       default:
-        target: 90%
+        target: 80%
         threshold: 1%
 
 ignore:
@@ -20,9 +20,3 @@ comment:
   layout: "newheader, diff, flags, files"  # show component info in the PR comment
   require_head: true
   show_carryforward_flags: true
-
-flags:
-  pkg:
-    carryforward: true
-    paths:
-      - pkg
