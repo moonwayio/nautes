@@ -40,6 +40,11 @@ test:
 test-ci:
 	@go test ./... -covermode=atomic -coverprofile=coverage.txt -timeout 30s -race -v -count=1
 
+.PHONY: cover
+## See coverage report
+cover:
+	@go tool cover -html=coverage.txt
+
 .PHONY: clean
 ## Clean up
 clean:
