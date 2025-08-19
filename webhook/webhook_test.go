@@ -39,6 +39,11 @@ func (s *WebhookTestSuite) TestWebhookServer() {
 
 	testCases := []testCase{
 		{
+			name:      "with no options should return error",
+			opts:      []OptionFunc{},
+			createErr: "certFile is required",
+		},
+		{
 			name: "with TLS disabled should succeed",
 			opts: []OptionFunc{
 				WithTLS(false),
@@ -50,6 +55,14 @@ func (s *WebhookTestSuite) TestWebhookServer() {
 				WithTLS(true),
 			},
 			createErr: "certFile is required",
+		},
+		{
+			name: "with TLS enabled but no key files should return error",
+			opts: []OptionFunc{
+				WithTLS(true),
+				WithCertFile(certFile),
+			},
+			createErr: "keyFile is required",
 		},
 		{
 			name: "with TLS enabled and invalid cert file should return error",

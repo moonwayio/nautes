@@ -109,8 +109,9 @@ func (m *metricsServer) Stop() error {
 		if err := m.server.Shutdown(context.Background()); err != nil {
 			return fmt.Errorf("failed to shutdown metrics server: %w", err)
 		}
-		return nil
 	}
+
+	m.logger.Info("metrics server stopped successfully")
 	return nil
 }
 
