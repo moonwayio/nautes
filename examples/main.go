@@ -32,13 +32,16 @@ import (
 )
 
 func main() {
-	if err := Run(); err != nil {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	if err := Run(signalChan); err != nil {
 		os.Exit(1)
 	}
 }
 
 // Run starts the example application.
-func Run() error {
+func Run(signalChan chan os.Signal) error {
 	logger := zerolog.New(
 		zerolog.ConsoleWriter{
 			Out:        os.Stderr,
@@ -63,12 +66,12 @@ func Run() error {
 		return fmt.Errorf("failed to create manager: %w", err)
 	}
 
-	config, err := config.GetKubernetesConfig("")
+	cfg, err := config.GetKubernetesConfig("")
 	if err != nil {
 		return fmt.Errorf("failed to get kubernetes config: %w", err)
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create clientset: %w", err)
 	}
@@ -113,7 +116,7 @@ func Run() error {
 	}
 
 	kclient, err := kubelet.NewKubeletClient(
-		kubelet.WithRestConfig(config),
+		kubelet.WithRestConfig(cfg),
 		kubelet.WithPriority([]corev1.NodeAddressType{corev1.NodeInternalIP}),
 		kubelet.WithInsecure(true),
 	)
@@ -126,66 +129,68 @@ func Run() error {
 		return fmt.Errorf("failed to create scheduler: %w", err)
 	}
 
-	err = sch.AddTask(scheduler.NewTask(func(ctx context.Context) error {
-		log := klog.FromContext(ctx)
-		start := time.Now()
-		log.Info("running periodic task")
+	if config.IsInCluster() {
+		err = sch.AddTask(scheduler.NewTask(func(ctx context.Context) error {
+			log := klog.FromContext(ctx)
+			start := time.Now()
+			log.Info("running periodic task")
 
-		nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+			nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to list nodes: %w", err)
+			}
+
+			for _, node := range nodes.Items {
+				b, err := kclient.Get(ctx, &node, "/stats/summary")
+				if err != nil {
+					return fmt.Errorf("failed to get node stats: %w", err)
+				}
+				type stats struct {
+					Node struct {
+						CPU struct {
+							UsageNanoCores int64 `json:"usageNanoCores"`
+						} `json:"cpu"`
+						Memory struct {
+							UsageBytes int64 `json:"usageBytes"`
+						} `json:"memory"`
+					} `json:"node"`
+					Pods []struct {
+						Ref struct {
+							Name      string `json:"name"`
+							Namespace string `json:"namespace"`
+							UID       string `json:"uid"`
+						} `json:"podRef"`
+						CPU struct {
+							UsageNanoCores int64 `json:"usageNanoCores"`
+						} `json:"cpu"`
+						Memory struct {
+							UsageBytes int64 `json:"usageBytes"`
+						} `json:"memory"`
+					} `json:"pods"`
+				}
+
+				var s stats
+				err = json.Unmarshal(b, &s)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal stats: %w", err)
+				}
+
+				cpu := resource.NewMilliQuantity(s.Node.CPU.UsageNanoCores/1e6, resource.DecimalSI)
+				mem := resource.NewQuantity(s.Node.Memory.UsageBytes, resource.BinarySI)
+				log.Info("node resource usage", "name", node.Name, "cpu", cpu, "memory", mem)
+				for _, pod := range s.Pods {
+					cpu := resource.NewMilliQuantity(pod.CPU.UsageNanoCores/1e6, resource.DecimalSI)
+					mem := resource.NewQuantity(pod.Memory.UsageBytes, resource.BinarySI)
+					log.Info("pod resource usage", "name", pod.Ref.Name, "cpu", cpu, "memory", mem)
+				}
+			}
+
+			log.Info("periodic task completed", "duration", time.Since(start))
+			return nil
+		}), 30*time.Second)
 		if err != nil {
-			return fmt.Errorf("failed to list nodes: %w", err)
+			return fmt.Errorf("failed to add task: %w", err)
 		}
-
-		for _, node := range nodes.Items {
-			b, err := kclient.Get(ctx, &node, "/stats/summary")
-			if err != nil {
-				return fmt.Errorf("failed to get node stats: %w", err)
-			}
-			type stats struct {
-				Node struct {
-					CPU struct {
-						UsageNanoCores int64 `json:"usageNanoCores"`
-					} `json:"cpu"`
-					Memory struct {
-						UsageBytes int64 `json:"usageBytes"`
-					} `json:"memory"`
-				} `json:"node"`
-				Pods []struct {
-					Ref struct {
-						Name      string `json:"name"`
-						Namespace string `json:"namespace"`
-						UID       string `json:"uid"`
-					} `json:"podRef"`
-					CPU struct {
-						UsageNanoCores int64 `json:"usageNanoCores"`
-					} `json:"cpu"`
-					Memory struct {
-						UsageBytes int64 `json:"usageBytes"`
-					} `json:"memory"`
-				} `json:"pods"`
-			}
-
-			var s stats
-			err = json.Unmarshal(b, &s)
-			if err != nil {
-				return fmt.Errorf("failed to unmarshal stats: %w", err)
-			}
-
-			cpu := resource.NewMilliQuantity(s.Node.CPU.UsageNanoCores/1e6, resource.DecimalSI)
-			mem := resource.NewQuantity(s.Node.Memory.UsageBytes, resource.BinarySI)
-			log.Info("node resource usage", "name", node.Name, "cpu", cpu, "memory", mem)
-			for _, pod := range s.Pods {
-				cpu := resource.NewMilliQuantity(pod.CPU.UsageNanoCores/1e6, resource.DecimalSI)
-				mem := resource.NewQuantity(pod.Memory.UsageBytes, resource.BinarySI)
-				log.Info("pod resource usage", "name", pod.Ref.Name, "cpu", cpu, "memory", mem)
-			}
-		}
-
-		log.Info("periodic task completed", "duration", time.Since(start))
-		return nil
-	}), 30*time.Second)
-	if err != nil {
-		return fmt.Errorf("failed to add task: %w", err)
 	}
 
 	err = mgr.Register(sch)
@@ -245,8 +250,6 @@ func Run() error {
 		return fmt.Errorf("failed to start manager: %w", err)
 	}
 
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 	<-signalChan
 
 	err = mgr.Stop()

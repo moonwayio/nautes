@@ -47,3 +47,9 @@ func GetKubernetesConfig(path string) (*rest.Config, error) {
 
 	return config, nil
 }
+
+// IsInCluster returns true if the config is in cluster, false otherwise.
+func IsInCluster() bool {
+	_, err := loadInClusterConfig()
+	return err == nil
+}

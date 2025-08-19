@@ -15,10 +15,6 @@ type ConfigTestSuite struct {
 	originalLoadConfigFromPath  func(string) (*rest.Config, error)
 }
 
-func TestConfigTestSuite(t *testing.T) {
-	suite.Run(t, new(ConfigTestSuite))
-}
-
 func (s *ConfigTestSuite) SetupTest() {
 	s.originalLoadInClusterConfig = loadInClusterConfig
 	s.originalLoadConfigFromPath = loadConfigFromPath
@@ -149,4 +145,18 @@ func (s *ConfigTestSuite) TestGetKubernetesConfigAllConfigsFail() {
 	s.Require().Error(err)
 	s.Require().Nil(config)
 	s.Require().Contains(err.Error(), "error loading kubernetes configuration")
+}
+
+func (s *ConfigTestSuite) TestIsInCluster() {
+	s.Require().False(IsInCluster())
+
+	loadInClusterConfig = func() (*rest.Config, error) {
+		return &rest.Config{Host: "in-cluster-host"}, nil
+	}
+
+	s.Require().True(IsInCluster())
+}
+
+func TestConfigTestSuite(t *testing.T) {
+	suite.Run(t, new(ConfigTestSuite))
 }
