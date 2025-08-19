@@ -7,11 +7,53 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 
 	"github.com/moonwayio/nautes/manager"
+	"github.com/moonwayio/nautes/metrics"
 )
+
+var (
+	taskExecutionCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "scheduler_task_execution_total",
+			Help: "Total number of task executions",
+		},
+		[]string{"name"},
+	)
+	taskExecutionDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "scheduler_task_execution_duration_seconds",
+			Help: "Duration of task executions",
+		},
+		[]string{"name"},
+	)
+	taskExecutionErrors = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "scheduler_task_execution_errors_total",
+			Help: "Total number of task execution errors",
+		},
+		[]string{"name"},
+	)
+	taskExecutionSuccesses = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "scheduler_task_execution_successes_total",
+			Help: "Total number of task execution successes",
+		},
+		[]string{"name"},
+	)
+)
+
+func init() {
+	metrics.Registry.MustRegister(
+		taskExecutionCount,
+		taskExecutionDuration,
+		taskExecutionErrors,
+		taskExecutionSuccesses,
+	)
+}
 
 // Scheduler provides a scheduler for periodic tasks.
 type Scheduler interface {
@@ -78,9 +120,21 @@ func (s *scheduler) Start() error {
 
 	for _, t := range s.tasks {
 		go wait.NonSlidingUntil(func() {
+			// increment the task execution count
+			taskExecutionCount.WithLabelValues(s.opts.name).Inc()
+			start := time.Now()
 			if err := t.task.Run(ctx); err != nil {
 				s.logger.Error(err, "task execution failed")
+
+				// increment the task execution errors
+				taskExecutionErrors.WithLabelValues(s.opts.name).Inc()
+			} else {
+				// increment the task execution successes
+				taskExecutionSuccesses.WithLabelValues(s.opts.name).Inc()
 			}
+
+			// observe the task execution duration
+			taskExecutionDuration.WithLabelValues(s.opts.name).Observe(time.Since(start).Seconds())
 		}, t.interval, s.stop)
 	}
 

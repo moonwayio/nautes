@@ -57,6 +57,9 @@ func (s *MetricsTestSuite) TestRegister() {
 			} else {
 				s.Require().NoError(err)
 			}
+
+			err = server.Unregister(tc.collector)
+			s.Require().NoError(err)
 		})
 	}
 }
@@ -120,6 +123,9 @@ func (s *MetricsTestSuite) TestMetricsEndpoint() {
 
 			// Stop the server
 			err = server.Stop()
+			s.Require().NoError(err)
+
+			err = server.Unregister(counter)
 			s.Require().NoError(err)
 		})
 	}

@@ -16,11 +16,15 @@ import (
 	"github.com/moonwayio/nautes/manager"
 )
 
+// Registry is the global metrics registry.
+var Registry = prometheus.NewRegistry()
+
 // Server provides metrics collection and exposition functionality.
 type Server interface {
 	manager.Component
 
-	Register(prometheus.Collector) error
+	Register(...prometheus.Collector) error
+	Unregister(...prometheus.Collector) error
 }
 
 // metricsServer implements metrics collection and exposition.
@@ -29,7 +33,7 @@ type metricsServer struct {
 	registry *prometheus.Registry
 	server   *http.Server
 
-	mu     sync.RWMutex
+	mu     sync.Mutex
 	logger klog.Logger
 }
 
@@ -37,18 +41,32 @@ type metricsServer struct {
 func NewMetricsServer(port int) Server {
 	return &metricsServer{
 		addr:     fmt.Sprintf("0.0.0.0:%d", port),
-		registry: prometheus.NewRegistry(),
+		registry: Registry,
 		logger:   klog.Background().WithValues("component", "metrics"),
 	}
 }
 
 // Register registers a metric.
-func (m *metricsServer) Register(collector prometheus.Collector) error {
+func (m *metricsServer) Register(collector ...prometheus.Collector) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if err := m.registry.Register(collector); err != nil {
-		return fmt.Errorf("failed to register collector: %w", err)
+	for _, c := range collector {
+		if err := m.registry.Register(c); err != nil {
+			return fmt.Errorf("failed to register collector: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// Unregister unregisters a metric.
+func (m *metricsServer) Unregister(collector ...prometheus.Collector) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, c := range collector {
+		m.registry.Unregister(c)
 	}
 
 	return nil

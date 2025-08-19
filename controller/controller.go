@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -18,7 +19,48 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/moonwayio/nautes/manager"
+	"github.com/moonwayio/nautes/metrics"
 )
+
+var (
+	reconcileCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "controller_reconcile_total",
+			Help: "Total number of reconciles",
+		},
+		[]string{"name"},
+	)
+	reconcileDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "controller_reconcile_duration_seconds",
+			Help: "Duration of reconciles",
+		},
+		[]string{"name"},
+	)
+	reconcileErrors = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "controller_reconcile_errors_total",
+			Help: "Total number of reconcile errors",
+		},
+		[]string{"name"},
+	)
+	reconcileSuccesses = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "controller_reconcile_successes_total",
+			Help: "Total number of reconcile successes",
+		},
+		[]string{"name"},
+	)
+)
+
+func init() {
+	metrics.Registry.MustRegister(
+		reconcileCount,
+		reconcileDuration,
+		reconcileErrors,
+		reconcileSuccesses,
+	)
+}
 
 // Reconciler function type for handling reconciliation logic.
 type Reconciler func(ctx context.Context, obj runtime.Object) error
@@ -202,10 +244,22 @@ func (c *controller) processNextItem() bool {
 
 	loggerCtx := klog.NewContext(ctx, c.logger)
 
+	// increment the reconcile count
+	reconcileCount.WithLabelValues(c.opts.name).Inc()
+
+	start := time.Now()
 	if err := c.reconciler(loggerCtx, obj); err != nil {
 		c.logger.Error(err, "failed to reconcile object", "key", key)
-		return true
+
+		// increment the reconcile errors
+		reconcileErrors.WithLabelValues(c.opts.name).Inc()
+	} else {
+		// increment the reconcile successes
+		reconcileSuccesses.WithLabelValues(c.opts.name).Inc()
 	}
+
+	// observe the reconcile duration
+	reconcileDuration.WithLabelValues(c.opts.name).Observe(time.Since(start).Seconds())
 
 	return true
 }

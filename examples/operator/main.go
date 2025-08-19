@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-logr/zerologr"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,7 +26,16 @@ import (
 	"github.com/moonwayio/nautes/controller"
 	"github.com/moonwayio/nautes/health"
 	"github.com/moonwayio/nautes/manager"
+	"github.com/moonwayio/nautes/metrics"
 	"github.com/moonwayio/nautes/webhook"
+)
+
+var observedPodCount = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "observed_pod_count",
+		Help: "Number of observed pods",
+	},
+	[]string{"namespace", "name"},
 )
 
 func main() {
@@ -78,6 +89,7 @@ func Run() error {
 			return errors.New("object is not a pod")
 		}
 		log.Info("reconciling pod", "pod", pod.Name, "status", pod.Status.Phase)
+		observedPodCount.WithLabelValues(pod.Namespace, pod.Name).Inc()
 		return nil
 	}
 
@@ -138,14 +150,56 @@ func Run() error {
 
 	err = webhookSrv.Register(
 		"/mutate",
-		func(_ context.Context, _ webhook.AdmissionRequest) webhook.AdmissionResponse {
+		func(ctx context.Context, req webhook.AdmissionRequest) webhook.AdmissionResponse {
+			log := klog.FromContext(ctx)
+
+			var pod *corev1.Pod
+			if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
+				return webhook.AdmissionResponse{
+					Allowed: false,
+					Result: &metav1.Status{
+						Message: "failed to unmarshal pod",
+					},
+				}
+			}
+
+			observedPodCount.WithLabelValues(pod.Namespace, pod.Name).Inc()
+
+			log.Info("mutating pod", "pod", pod.Name)
+
+			pod.Labels["nautes.moonway.io/patched"] = "true"
+
+			diff, err := webhook.GetJSONDiff(req.Object.Raw, pod)
+			if err != nil {
+				return webhook.AdmissionResponse{
+					Allowed: false,
+					Result: &metav1.Status{
+						Message: "failed to get json patch",
+					},
+				}
+			}
+
 			return webhook.AdmissionResponse{
-				Allowed: true,
+				Allowed:   true,
+				Patch:     diff.Patch,
+				PatchType: &diff.PatchType,
 			}
 		},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to register webhook handler: %w", err)
+	}
+
+	metricsSrv := metrics.NewMetricsServer(8082)
+
+	err = metricsSrv.Register(observedPodCount)
+	if err != nil {
+		return fmt.Errorf("failed to register observed pod count: %w", err)
+	}
+
+	err = mgr.Register(metricsSrv)
+	if err != nil {
+		return fmt.Errorf("failed to register metrics server: %w", err)
 	}
 
 	err = mgr.Start()

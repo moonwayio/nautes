@@ -13,8 +13,51 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/moonwayio/nautes/manager"
+	"github.com/moonwayio/nautes/metrics"
 )
+
+var (
+	webhookRequestCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "webhook_request_total",
+			Help: "Total number of webhook requests",
+		},
+		[]string{"name"},
+	)
+	webhookRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "webhook_request_duration_seconds",
+			Help: "Duration of webhook requests",
+		},
+		[]string{"name"},
+	)
+	webhookRequestErrors = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "webhook_request_errors_total",
+			Help: "Total number of webhook request errors",
+		},
+		[]string{"name"},
+	)
+	webhookRequestSuccesses = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "webhook_request_successes_total",
+			Help: "Total number of webhook request successes",
+		},
+		[]string{"name"},
+	)
+)
+
+func init() {
+	metrics.Registry.MustRegister(
+		webhookRequestCount,
+		webhookRequestDuration,
+		webhookRequestErrors,
+		webhookRequestSuccesses,
+	)
+}
 
 // Server provides mutating and validating admission webhooks.
 type Server interface {
@@ -145,8 +188,19 @@ func (w *webhookServer) handleWebhook(wr http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// increment the webhook request count
+	webhookRequestCount.WithLabelValues(r.URL.Path).Inc()
+
+	start := time.Now()
 	// Call the handler
 	resp := handler(r.Context(), req)
+	webhookRequestDuration.WithLabelValues(r.URL.Path).Observe(time.Since(start).Seconds())
+
+	if resp.Allowed {
+		webhookRequestSuccesses.WithLabelValues(r.URL.Path).Inc()
+	} else {
+		webhookRequestErrors.WithLabelValues(r.URL.Path).Inc()
+	}
 
 	// Return the response
 	wr.Header().Set("Content-Type", "application/json")
