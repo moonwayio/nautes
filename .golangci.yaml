@@ -1,0 +1,74 @@
+version: "2"
+
+linters:
+  enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - containedctx
+    - contextcheck
+    - decorder
+    - dupl
+    - durationcheck
+    - errname
+    - errcheck
+    - fatcontext
+    - forcetypeassert
+    - funcorder
+    - funlen
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - godox
+    - gosec
+    - govet
+    - iface
+    - ineffassign
+    - interfacebloat
+    - maintidx
+    - nolintlint
+    - prealloc
+    - perfsprint
+    - revive
+    - sqlclosecheck
+    - staticcheck
+    - testifylint
+    - thelper
+    - tparallel
+    - unused
+    - wrapcheck
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen # allow longer functions in test files
+          - containedctx # allow context in test files structs
+          - forcetypeassert # allow unsafe type assertions in test files
+          - dupl # allow duplicate code in test files, some tests are too similar to each other
+      - path: examples
+        linters:
+          - gocognit # allow higher cognitive complexity in examples
+          - funlen # allow longer functions in examples
+          - maintidx # disable maintidx in examples
+
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/moonwayio/nautes
+
+run:
+  timeout: 5m
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  fix: true

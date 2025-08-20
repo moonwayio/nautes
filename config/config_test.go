@@ -1,0 +1,162 @@
+package config
+
+import (
+	"errors"
+	"os"
+	"testing"
+
+	"github.com/stretchr/testify/suite"
+	"k8s.io/client-go/rest"
+)
+
+type ConfigTestSuite struct {
+	suite.Suite
+	originalLoadInClusterConfig func() (*rest.Config, error)
+	originalLoadConfigFromPath  func(string) (*rest.Config, error)
+}
+
+func (s *ConfigTestSuite) SetupTest() {
+	s.originalLoadInClusterConfig = loadInClusterConfig
+	s.originalLoadConfigFromPath = loadConfigFromPath
+}
+
+func (s *ConfigTestSuite) TearDownTest() {
+	loadInClusterConfig = s.originalLoadInClusterConfig
+	loadConfigFromPath = s.originalLoadConfigFromPath
+}
+
+func (s *ConfigTestSuite) TestGetKubernetesConfigWithPath_Success() {
+	expectedConfig := &rest.Config{Host: "test-host"}
+	loadConfigFromPath = func(_ string) (*rest.Config, error) {
+		return expectedConfig, nil
+	}
+
+	config, err := GetKubernetesConfig("/test/path")
+
+	// Assert
+	s.Require().NoError(err)
+	s.Require().Equal(expectedConfig, config)
+}
+
+func (s *ConfigTestSuite) TestGetKubernetesConfigWithPath_Error() {
+	expectedError := errors.New("config load error")
+	loadConfigFromPath = func(_ string) (*rest.Config, error) {
+		return nil, expectedError
+	}
+
+	config, err := GetKubernetesConfig("/test/path")
+
+	s.Require().Error(err)
+	s.Require().Nil(config)
+	s.Require().Contains(err.Error(), "error loading kubernetes configuration")
+}
+
+func (s *ConfigTestSuite) TestGetKubernetesConfigInCluster_Success() {
+	expectedConfig := &rest.Config{Host: "in-cluster-host"}
+	loadInClusterConfig = func() (*rest.Config, error) {
+		return expectedConfig, nil
+	}
+
+	config, err := GetKubernetesConfig("")
+
+	s.Require().NoError(err)
+	s.Require().Equal(expectedConfig, config)
+}
+
+func (s *ConfigTestSuite) TestGetKubernetesConfigKubeconfigEnv_Success() {
+	expectedConfig := &rest.Config{Host: "env-host"}
+	loadInClusterConfig = func() (*rest.Config, error) {
+		return nil, errors.New("in-cluster error")
+	}
+	loadConfigFromPath = func(path string) (*rest.Config, error) {
+		if path == "/test/kubeconfig" {
+			return expectedConfig, nil
+		}
+		return nil, errors.New("wrong path")
+	}
+
+	err := os.Setenv("KUBECONFIG", "/test/kubeconfig")
+	s.Require().NoError(err)
+	defer func() {
+		err := os.Unsetenv("KUBECONFIG")
+		s.Require().NoError(err)
+	}()
+
+	config, err := GetKubernetesConfig("")
+
+	s.Require().NoError(err)
+	s.Require().Equal(expectedConfig, config)
+}
+
+func (s *ConfigTestSuite) TestGetKubernetesConfigHomeDir_Success() {
+	expectedConfig := &rest.Config{Host: "home-host"}
+	loadInClusterConfig = func() (*rest.Config, error) {
+		return nil, errors.New("in-cluster error")
+	}
+	loadConfigFromPath = func(path string) (*rest.Config, error) {
+		if path == "/test/kubeconfig" {
+			return nil, errors.New("env config error")
+		}
+		if path == "/home/user/.kube/config" {
+			return expectedConfig, nil
+		}
+		return nil, errors.New("wrong path")
+	}
+
+	originalHomeDir := os.Getenv("HOME")
+	err := os.Setenv("HOME", "/home/user")
+	s.Require().NoError(err)
+	defer func() {
+		err := os.Setenv("HOME", originalHomeDir)
+		s.Require().NoError(err)
+	}()
+
+	config, err := GetKubernetesConfig("")
+
+	s.Require().NoError(err)
+	s.Require().Equal(expectedConfig, config)
+}
+
+func (s *ConfigTestSuite) TestGetKubernetesConfigAllConfigsFail() {
+	loadInClusterConfig = func() (*rest.Config, error) {
+		return nil, errors.New("in-cluster error")
+	}
+	loadConfigFromPath = func(_ string) (*rest.Config, error) {
+		return nil, errors.New("all configs failed")
+	}
+
+	err := os.Setenv("KUBECONFIG", "/test/kubeconfig")
+	s.Require().NoError(err)
+	defer func() {
+		err := os.Unsetenv("KUBECONFIG")
+		s.Require().NoError(err)
+	}()
+
+	originalHomeDir := os.Getenv("HOME")
+	err = os.Setenv("HOME", "/home/user")
+	s.Require().NoError(err)
+	defer func() {
+		err := os.Setenv("HOME", originalHomeDir)
+		s.Require().NoError(err)
+	}()
+
+	config, err := GetKubernetesConfig("")
+
+	s.Require().Error(err)
+	s.Require().Nil(config)
+	s.Require().Contains(err.Error(), "error loading kubernetes configuration")
+}
+
+func (s *ConfigTestSuite) TestIsInCluster() {
+	s.Require().False(IsInCluster())
+
+	loadInClusterConfig = func() (*rest.Config, error) {
+		return &rest.Config{Host: "in-cluster-host"}, nil
+	}
+
+	s.Require().True(IsInCluster())
+}
+
+func TestConfigTestSuite(t *testing.T) {
+	suite.Run(t, new(ConfigTestSuite))
+}

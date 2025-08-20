@@ -1,0 +1,33 @@
+# Exclude generated files
+*.gen.go
+**/mocks/
+**/gen/
+
+# Exclude vendor directory
+vendor/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+*coverage.txt
+
+# Go workspace file
+go.work
+go.work.sum
+
+# IDEs
+.idea
+.vscode
+
+# Build outputs
+out/
+bin/
+dist/
+
+# MacOS files
+.DS_Store
+
+# AI stuff
+.codebuddy

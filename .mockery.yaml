@@ -1,0 +1,11 @@
+pkgname: "mock_{{.SrcPackageName}}"
+filename: "mock_{{.InterfaceName | lower}}.go"
+log-level: "warn"
+packages:
+  github.com/moonwayio/nautes:
+    config:
+      dir: "{{.InterfaceDir}}/mocks"
+      filename: "mock_{{.InterfaceName | snakecase}}.go"
+      recursive: true
+      include-interface-regex: ".*"
+      exclude-interface-regex: ".*Func"

@@ -1,0 +1,45 @@
+repos:
+  - repo: local
+    hooks:
+      - id: go-mod-tidy
+        name: go mod tidy
+        entry: make tidy
+        language: system
+        types: [go]
+        pass_filenames: false
+        always_run: true
+
+      - id: go-generate
+        name: go generate
+        entry: make generate
+        language: system
+        types: [go]
+        pass_filenames: false
+        always_run: true
+
+      - id: go-lint
+        name: golangci-lint
+        entry: make lint
+        language: system
+        types: [go]
+        pass_filenames: false
+        always_run: true
+
+      - id: go-test
+        name: go test
+        entry: make test
+        language: system
+        types: [go]
+        pass_filenames: false
+        always_run: true
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: no-commit-to-branch
+      - id: trailing-whitespace
