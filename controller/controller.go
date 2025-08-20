@@ -1,4 +1,8 @@
 // Package controller provides Kubernetes controller functionality for watching and reconciling resources.
+//
+// The controller package implements the watch-queue-reconcile pattern commonly used in Kubernetes
+// controllers. It provides a framework for building controllers that can watch Kubernetes resources,
+// queue events for processing, and reconcile the desired state with the actual state.
 package controller
 
 import (
@@ -53,6 +57,12 @@ var (
 	)
 )
 
+// init registers the Prometheus metrics for the controller package.
+//
+// This function is called automatically when the package is imported and
+// registers all the metrics defined in this package with the global metrics
+// registry. This ensures that the metrics are available for collection
+// by Prometheus or other monitoring systems.
 func init() {
 	metrics.Registry.MustRegister(
 		reconcileCount,
@@ -63,15 +73,50 @@ func init() {
 }
 
 // Reconciler function type for handling reconciliation logic.
+//
+// A Reconciler is a function that takes a Kubernetes object and performs the
+// necessary actions to reconcile the desired state with the actual state.
+// The function should be idempotent and handle errors gracefully.
+//
+// Parameters:
+//   - ctx: Context for the reconciliation operation, may be cancelled
+//   - obj: The Kubernetes object to reconcile
+//
+// Returns:
+//   - error: Any error encountered during reconciliation
 type Reconciler func(ctx context.Context, obj runtime.Object) error
 
 // Controller implements the watch–queue–reconcile loop.
+//
+// The Controller interface provides methods to manage the lifecycle of a Kubernetes
+// controller. It handles resource watching, event queuing, and reconciliation
+// coordination. The controller can watch multiple resource types and process
+// events concurrently.
+//
+// Implementations of this interface are concurrency safe and can be used concurrently
+// from multiple goroutines.
 type Controller interface {
 	manager.Component
+
+	// AddRetriever adds a resource retriever to the controller.
+	//
+	// The retriever provides the List and Watch functions needed to monitor
+	// Kubernetes resources. Multiple retrievers can be added to watch different
+	// resource types or namespaces.
+	//
+	// Parameters:
+	//   - retriever: The retriever to add for resource watching
+	//
+	// Returns:
+	//   - error: Any error encountered while adding the retriever
 	AddRetriever(retriever Retriever) error
 }
 
 // controller implements the Controller interface.
+//
+// The controller maintains a work queue for processing events and coordinates
+// the reconciliation of resources. It uses informers to watch Kubernetes
+// resources and enqueue events for processing by worker goroutines.
 type controller struct {
 	opts       options
 	reconciler Reconciler
@@ -81,11 +126,24 @@ type controller struct {
 	informers  []cache.SharedIndexInformer
 	logger     klog.Logger
 
-	stop chan struct{}
-	mu   sync.RWMutex
+	stop    chan struct{}
+	mu      sync.Mutex
+	started bool
 }
 
-// NewController creates a new Controller instance.
+// NewController creates a new Controller instance with the provided reconciler and options.
+//
+// The controller is initialized with the specified reconciler function and can be
+// customized using option functions. The returned controller is ready to accept
+// resource retrievers and start processing events.
+//
+// Parameters:
+//   - reconciler: The function that handles reconciliation logic
+//   - opts: Optional configuration functions to customize the controller behavior
+//
+// Returns:
+//   - Controller: A new controller instance ready for use
+//   - error: Any error encountered during initialization
 func NewController(reconciler Reconciler, opts ...OptionFunc) (Controller, error) {
 	var o options
 	for _, opt := range opts {
@@ -110,7 +168,23 @@ func NewController(reconciler Reconciler, opts ...OptionFunc) (Controller, error
 	}, nil
 }
 
-// AddWatcher adds a watcher for a specific resource type.
+// AddRetriever adds a resource retriever to the controller.
+//
+// This method creates an informer for the provided retriever and registers
+// event handlers to enqueue resource changes for processing. The informer
+// will watch for resource creation, updates, and deletions, adding them
+// to the work queue for reconciliation.
+//
+// The method is concurrency safe and can be called multiple times to add
+// different retrievers for various resource types or namespaces.
+//
+// Parameters:
+//   - retriever: The resource retriever to add. Must not be nil and must
+//     provide valid List and Watch functions.
+//
+// Returns:
+//   - error: Any error encountered while setting up the informer or
+//     registering event handlers
 func (c *controller) AddRetriever(retriever Retriever) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -165,8 +239,15 @@ func (c *controller) AddRetriever(retriever Retriever) error {
 
 // Start starts the controller.
 func (c *controller) Start() error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// if the controller is already started, return nil to ensure idempotency
+	if c.started {
+		return nil
+	}
+
+	c.started = true
 
 	c.logger.Info("starting controller")
 
@@ -192,9 +273,15 @@ func (c *controller) Start() error {
 
 // Stop stops the controller.
 func (c *controller) Stop() error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
+	// if the controller is not started, return nil to ensure idempotency
+	if !c.started {
+		return nil
+	}
+
+	c.started = false
 	c.logger.Info("stopping controller")
 	c.queue.ShutDown()
 	close(c.stop)
@@ -202,11 +289,25 @@ func (c *controller) Stop() error {
 	return nil
 }
 
+// GetName returns the name of the controller.
+//
+// The name is constructed by combining "controller/" with the configured
+// controller name. This is used for logging, metrics, and debugging purposes.
+//
+// Returns:
+//   - string: The controller name in the format "controller/{name}"
 func (c *controller) GetName() string {
 	return "controller/" + c.opts.name
 }
 
-// runWorker runs the worker loop.
+// runWorker runs the worker loop for processing items from the work queue.
+//
+// This method runs in a goroutine and continuously processes items from the
+// work queue until the worker is shut down. It calls processNextItem in a
+// loop and logs when the worker stops.
+//
+// The worker will continue running until the controller is stopped or the
+// work queue is shut down.
 func (c *controller) runWorker() {
 	for c.processNextItem() {
 		// Process next item from the queue. If the worker is shutting down, break the loop.
@@ -215,17 +316,30 @@ func (c *controller) runWorker() {
 	c.logger.Info("worker stopped")
 }
 
-// processNextItem processes the next item from the work queue and returns if the worker should continue running.
+// processNextItem processes the next item from the work queue.
+//
+// This method retrieves the next item from the work queue, processes it through
+// the reconciler, and handles any errors that occur during processing. It also
+// updates metrics for reconciliation counts, durations, and errors.
+//
+// The method returns true if the worker should continue processing items,
+// and false if the worker should stop (e.g., when the queue is shut down).
+//
+// Returns:
+//   - bool: true if the worker should continue, false if it should stop
 func (c *controller) processNextItem() bool {
 	ctx := context.Background()
 
+	// Get the next item from the work queue
 	key, shutdown := c.queue.Get()
 	if shutdown {
 		return false
 	}
 
+	// Mark the item as done when we finish processing it
 	defer c.queue.Done(key)
 
+	// Retrieve the object from the informer cache
 	obj, exists, err := c.getObject(key)
 	if err != nil {
 		c.logger.Error(err, "failed to get object", "key", key)
@@ -236,7 +350,7 @@ func (c *controller) processNextItem() bool {
 		return true
 	}
 
-	// populate the typemeta, since it's not populated by the informer
+	// Populate the type metadata since it's not populated by the informer
 	meta, err := getGVKForObject(obj, c.scheme)
 	if err == nil {
 		obj.GetObjectKind().SetGroupVersionKind(meta)
@@ -244,27 +358,42 @@ func (c *controller) processNextItem() bool {
 
 	loggerCtx := klog.NewContext(ctx, c.logger)
 
-	// increment the reconcile count
+	// Increment the reconcile count metric
 	reconcileCount.WithLabelValues(c.opts.name).Inc()
 
+	// Measure reconciliation duration
 	start := time.Now()
 	if err := c.reconciler(loggerCtx, obj); err != nil {
 		c.logger.Error(err, "failed to reconcile object", "key", key)
 
-		// increment the reconcile errors
+		// Increment the reconcile errors metric
 		reconcileErrors.WithLabelValues(c.opts.name).Inc()
 	} else {
-		// increment the reconcile successes
+		// Increment the reconcile successes metric
 		reconcileSuccesses.WithLabelValues(c.opts.name).Inc()
 	}
 
-	// observe the reconcile duration
+	// Observe the reconcile duration metric
 	reconcileDuration.WithLabelValues(c.opts.name).Observe(time.Since(start).Seconds())
 
 	return true
 }
 
+// getObject retrieves an object from the informer indexers using the provided key.
+//
+// This method searches through all registered informers to find the object
+// with the specified key. It returns the object if found, along with a boolean
+// indicating whether the object exists.
+//
+// Parameters:
+//   - key: The key used to look up the object (typically namespace/name format)
+//
+// Returns:
+//   - runtime.Object: The retrieved object, or nil if not found
+//   - bool: true if the object exists, false otherwise
+//   - error: Any error encountered during the lookup
 func (c *controller) getObject(key string) (runtime.Object, bool, error) {
+	// Search through all informers for the object
 	for _, informer := range c.informers {
 		idx := informer.GetIndexer()
 		obj, exists, err := idx.GetByKey(key)
@@ -272,6 +401,7 @@ func (c *controller) getObject(key string) (runtime.Object, bool, error) {
 			return nil, false, fmt.Errorf("failed to get object from indexer: %w", err)
 		}
 		if exists {
+			// Ensure the object is a runtime.Object
 			runtimeObj, ok := obj.(runtime.Object)
 			if !ok {
 				return nil, false, errors.New("object is not a runtime.Object")

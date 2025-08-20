@@ -1,4 +1,8 @@
 // Package kubelet provides functionality for direct communication with Kubernetes node kubelets.
+//
+// The kubelet package implements a client for making direct API calls to Kubernetes
+// node kubelets. This is useful for scenarios where you need to access kubelet-specific
+// endpoints that are not available through the standard Kubernetes API server.
 package kubelet
 
 import (
@@ -19,18 +23,55 @@ import (
 )
 
 // NodeKubeletClient provides a client for direct API calls to a node's kubelet.
+//
+// The NodeKubeletClient interface provides methods to make HTTP requests directly
+// to Kubernetes node kubelets. This is useful for accessing kubelet-specific
+// endpoints such as metrics, logs, and debugging information that are not
+// available through the standard Kubernetes API server.
+//
+// Implementations of this interface are concurrency safe and can be used concurrently
+// from multiple goroutines.
 type NodeKubeletClient interface {
+	// Get makes a GET request to the kubelet API on the specified node.
+	//
+	// The method constructs the appropriate URL for the kubelet endpoint and
+	// makes an HTTP GET request. It uses the node's address and kubelet port
+	// to determine the target URL.
+	//
+	// Parameters:
+	//   - ctx: Context for the request, may be cancelled
+	//   - node: The Kubernetes node to query
+	//   - path: The kubelet API path to request (e.g., "/stats/summary", "/pods")
+	//
+	// Returns:
+	//   - []byte: The response body as bytes
+	//   - error: Any error encountered during the request
 	Get(ctx context.Context, node *corev1.Node, path string) ([]byte, error)
 }
 
 // kubeletClient implements the KubeletClient interface.
+//
+// The kubelet client maintains HTTP client configuration and provides methods
+// for making direct requests to node kubelets. It uses buffer pooling for
+// efficient memory usage and supports both secure and insecure connections.
 type nodeKubeletClient struct {
 	opts    options
 	client  *http.Client
 	buffers sync.Pool
 }
 
-// NewKubeletClient creates a new Kubelet client.
+// NewKubeletClient creates a new Kubelet client with the provided options.
+//
+// The client is initialized with the specified configuration and can be customized
+// using option functions. The returned client is ready to make requests to node
+// kubelets.
+//
+// Parameters:
+//   - opts: Optional configuration functions to customize the client behavior
+//
+// Returns:
+//   - NodeKubeletClient: A new kubelet client instance ready for use
+//   - error: Any error encountered during initialization
 func NewKubeletClient(opts ...OptionFunc) (NodeKubeletClient, error) {
 	o := options{}
 
@@ -73,7 +114,24 @@ func NewKubeletClient(opts ...OptionFunc) (NodeKubeletClient, error) {
 	}, nil
 }
 
-// Get makes a GET request to the kubelet API.
+// Get makes a GET request to the kubelet API on the specified node.
+//
+// The method constructs the appropriate URL for the kubelet endpoint using the
+// node's address and kubelet port. It makes an HTTP GET request and returns
+// the response body as bytes.
+//
+// The method handles URL construction, request creation, and response processing.
+// It uses the client's HTTP configuration including TLS settings and timeouts.
+//
+// Parameters:
+//   - ctx: Context for the request, may be cancelled
+//   - node: The Kubernetes node to query. Must not be nil and must have valid status.
+//   - path: The kubelet API path to request. Must start with "/".
+//
+// Returns:
+//   - []byte: The response body as bytes
+//   - error: Any error encountered during the request, including network errors,
+//     authentication errors, or invalid node configuration
 func (k *nodeKubeletClient) Get(
 	ctx context.Context,
 	node *corev1.Node,
@@ -131,7 +189,23 @@ func (k *nodeKubeletClient) Get(
 	return b, nil
 }
 
+// getAddress retrieves the preferred network address for a node.
+//
+// This method iterates through the configured address priority list and
+// returns the first available address of the preferred type for the given node.
+// It searches through the node's status addresses to find a matching address type.
+//
+// The method is used internally by the Get method to determine which address
+// to use when connecting to the node's kubelet.
+//
+// Parameters:
+//   - node: The Kubernetes node to get the address for
+//
+// Returns:
+//   - string: The preferred network address for the node
+//   - error: An error if no suitable address is found for the node
 func (k *nodeKubeletClient) getAddress(node *corev1.Node) (string, error) {
+	// Search through address types in priority order
 	for _, addrType := range k.opts.priority {
 		for _, addr := range node.Status.Addresses {
 			if addr.Type == addrType {
