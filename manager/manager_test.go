@@ -211,6 +211,20 @@ func (s *ManagerTestSuite) TestStartAndStopManager() {
 			stopError:  errors.New("stop failed"),
 		},
 		{
+			name: "StopWithLeaderElectionAwareComponentThatFailsStoppingShouldStillComplete",
+			components: []component.Component{
+				&fakeLeaderElectionAwareComponent{
+					name:                "leader-election-aware-component",
+					needsLeaderElection: true,
+					stop: func() error {
+						return errors.New("stop failed")
+					},
+				},
+			},
+			startError: nil,
+			stopError:  errors.New("stop failed"),
+		},
+		{
 			name: "StartAndStopWithLeaderElectionAwareComponentShouldSucceed",
 			components: []component.Component{
 				&fakeLeaderElectionAwareComponent{
