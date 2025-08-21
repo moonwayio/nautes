@@ -154,6 +154,26 @@ func (s *MetricsTestSuite) TestRegisterDuplicateMetric() {
 	s.Require().Contains(err.Error(), "failed to register collector")
 }
 
+func (s *MetricsTestSuite) TestMetricsServerIdempotency() {
+	server := NewMetricsServer(9090)
+
+	// Test Start idempotency
+	err := server.Start()
+	s.Require().NoError(err)
+
+	// Start again should not error (idempotent)
+	err = server.Start()
+	s.Require().NoError(err)
+
+	// Test Stop idempotency
+	err = server.Stop()
+	s.Require().NoError(err)
+
+	// Stop again should not error (idempotent)
+	err = server.Stop()
+	s.Require().NoError(err)
+}
+
 func TestMetricsTestSuite(t *testing.T) {
 	suite.Run(t, new(MetricsTestSuite))
 }

@@ -89,7 +89,6 @@ type manager struct {
 	opts       options
 	components []Component
 	logger     klog.Logger
-	started    bool
 
 	mu sync.RWMutex
 }
@@ -121,9 +120,8 @@ func NewManager(opts ...OptionFunc) (Manager, error) {
 	logger.Info("manager initialized successfully")
 
 	return &manager{
-		opts:    o,
-		logger:  logger,
-		started: false,
+		opts:   o,
+		logger: logger,
 	}, nil
 }
 
@@ -159,12 +157,6 @@ func (m *manager) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// if the manager is already started, return nil to ensure idempotency
-	if m.started {
-		return nil
-	}
-
-	m.started = true
 	m.logger.Info("starting manager")
 
 	// Start all components
@@ -191,12 +183,6 @@ func (m *manager) Stop() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// if the manager is not started, return nil to ensure idempotency
-	if !m.started {
-		return nil
-	}
-
-	m.started = false
 	m.logger.Info("stopping manager")
 
 	errs := []error{}

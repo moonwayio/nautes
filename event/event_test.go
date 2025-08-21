@@ -185,6 +185,30 @@ func (s *EventTestSuite) TestGetName() {
 	s.Require().Equal("event/test", recorder.GetName())
 }
 
+func (s *EventTestSuite) TestEventRecorderIdempotency() {
+	recorder, err := NewRecorder(
+		WithName("test"),
+		WithClient(fake.NewSimpleClientset()),
+	)
+	s.Require().NoError(err)
+
+	// Test Start
+	err = recorder.Start()
+	s.Require().NoError(err)
+
+	// Start again should not error (idempotent)
+	err = recorder.Start()
+	s.Require().NoError(err)
+
+	// Test Stop
+	err = recorder.Stop()
+	s.Require().NoError(err)
+
+	// Stop again should not error (idempotent)
+	err = recorder.Stop()
+	s.Require().NoError(err)
+}
+
 func TestEventTestSuite(t *testing.T) {
 	suite.Run(t, new(EventTestSuite))
 }
