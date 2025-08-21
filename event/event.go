@@ -11,35 +11,26 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	typedv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
-	"github.com/moonwayio/nautes/manager"
+	"github.com/moonwayio/nautes/component"
 )
-
-// EventType represents the type of event.
-//
-// EventType defines the classification of Kubernetes events. Events can be
-// either normal (informational) or warning (indicating a problem).
-//
-//nolint:revive
-type EventType string
 
 const (
 	// EventTypeNormal represents a normal event.
 	//
 	// Normal events indicate that something expected happened, such as a
 	// resource being created, updated, or deleted successfully.
-	EventTypeNormal EventType = "Normal"
+	EventTypeNormal = "Normal"
 
 	// EventTypeWarning represents a warning event.
 	//
 	// Warning events indicate that something unexpected happened, such as
 	// a resource failing to start, a configuration error, or a resource
 	// being in an unhealthy state.
-	EventTypeWarning EventType = "Warning"
+	EventTypeWarning = "Warning"
 )
 
 // Recorder is the interface for event recording.
@@ -51,7 +42,7 @@ const (
 // Implementations of this interface are concurrency safe and can be used concurrently
 // from multiple goroutines.
 type Recorder interface {
-	manager.Component
+	component.Component
 
 	// Event records a simple event with the specified type, reason, and message.
 	//
@@ -64,7 +55,7 @@ type Recorder interface {
 	//   - eventtype: The type of event (Normal or Warning)
 	//   - reason: A short, machine-readable reason for the event
 	//   - message: A human-readable description of the event
-	Event(object runtime.Object, eventtype EventType, reason, message string)
+	Event(object runtime.Object, eventtype string, reason, message string)
 
 	// Eventf records a formatted event with the specified type, reason, and message.
 	//
@@ -77,7 +68,7 @@ type Recorder interface {
 	//   - reason: A short, machine-readable reason for the event
 	//   - messageFmt: A format string for the event message
 	//   - args: Arguments to format the message string
-	Eventf(object runtime.Object, eventtype EventType, reason, messageFmt string, args ...any)
+	Eventf(object runtime.Object, eventtype string, reason, messageFmt string, args ...any)
 
 	// AnnotatedEventf records an annotated event with custom metadata.
 	//
@@ -94,7 +85,7 @@ type Recorder interface {
 	AnnotatedEventf(
 		object runtime.Object,
 		annotations map[string]string,
-		eventtype EventType,
+		eventtype string,
 		reason, messageFmt string,
 		args ...any,
 	)
@@ -106,9 +97,7 @@ type Recorder interface {
 // methods for creating and managing events. It uses the Kubernetes event
 // broadcaster to ensure events are properly distributed.
 type recorder struct {
-	name string
-
-	client      kubernetes.Interface
+	opts        options
 	recorder    record.EventRecorder
 	broadcaster record.EventBroadcaster
 	logger      klog.Logger
@@ -140,8 +129,7 @@ func NewRecorder(opts ...OptionFunc) (Recorder, error) {
 	broadcaster := record.NewBroadcaster()
 
 	return &recorder{
-		name:        o.name,
-		client:      o.client,
+		opts:        o,
 		recorder:    broadcaster.NewRecorder(o.scheme, corev1.EventSource{Component: o.name}),
 		broadcaster: broadcaster,
 		logger:      klog.Background().WithValues("component", "event/"+o.name),
@@ -166,7 +154,7 @@ func (r *recorder) Start() error {
 	r.started = true
 	r.logger.Info("starting event recorder")
 	r.broadcaster.StartRecordingToSink(
-		&typedv1core.EventSinkImpl{Interface: r.client.CoreV1().Events("")},
+		&typedv1core.EventSinkImpl{Interface: r.opts.client.CoreV1().Events("")},
 	)
 	r.logger.Info("event recorder started successfully")
 	return nil
@@ -200,7 +188,7 @@ func (r *recorder) Stop() error {
 //   - eventtype: The type of event
 //   - reason: A short, machine-readable reason for the event
 //   - message: A human-readable description of the event
-func (r *recorder) Event(object runtime.Object, eventtype EventType, reason, message string) {
+func (r *recorder) Event(object runtime.Object, eventtype string, reason, message string) {
 	r.logger.V(1).
 		Info("recording event", "object", object, "eventtype", eventtype, "reason", reason, "message", message)
 	r.recorder.Event(object, string(eventtype), reason, message)
@@ -216,7 +204,7 @@ func (r *recorder) Event(object runtime.Object, eventtype EventType, reason, mes
 //   - args: Arguments to format the message string
 func (r *recorder) Eventf(
 	object runtime.Object,
-	eventtype EventType,
+	eventtype string,
 	reason, messageFmt string,
 	args ...any,
 ) {
@@ -240,7 +228,7 @@ func (r *recorder) Eventf(
 func (r *recorder) AnnotatedEventf(
 	object runtime.Object,
 	annotations map[string]string,
-	eventtype EventType,
+	eventtype string,
 	reason, messageFmt string,
 	args ...any,
 ) {
@@ -257,5 +245,17 @@ func (r *recorder) AnnotatedEventf(
 // Returns:
 //   - string: The event recorder name in the format "event/{name}"
 func (r *recorder) GetName() string {
-	return "event/" + r.name
+	return "event/" + r.opts.name
+}
+
+// NeedsLeaderElection indicates if the event recorder needs leader election
+//
+// When set to true, the event recorder will only start when the leader election
+// is active. If set to false, the event recorder will start immediately when the
+// manager starts.
+//
+// Returns:
+//   - bool: true if the event recorder needs leader election, false otherwise
+func (r *recorder) NeedsLeaderElection() bool {
+	return r.opts.needsLeaderElection
 }

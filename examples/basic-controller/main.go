@@ -130,7 +130,6 @@ func Run() error {
 	ctrl, err := controller.NewController(
 		reconciler,
 		controller.WithName("test-controller"),
-		controller.WithClient(clientset),
 		controller.WithScheme(k8sScheme),
 		controller.WithConcurrency(3),
 	)

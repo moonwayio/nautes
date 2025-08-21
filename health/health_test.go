@@ -23,7 +23,7 @@ func (s *HealthTestSuite) TestNewHealthCheck() {
 
 	testCases := []testCase{
 		{
-			name: "with valid port should succeed",
+			name: "WithValidPortShouldSucceed",
 			port: 8080,
 		},
 	}
@@ -44,13 +44,13 @@ func (s *HealthTestSuite) TestRegisterReadiness() {
 
 	testCases := []testCase{
 		{
-			name: "registering healthy readiness check should succeed",
+			name: "RegisteringHealthyReadinessCheckShouldSucceed",
 			check: func(_ context.Context) error {
 				return nil
 			},
 		},
 		{
-			name: "registering unhealthy readiness check should succeed",
+			name: "RegisteringUnhealthyReadinessCheckShouldSucceed",
 			check: func(_ context.Context) error {
 				return errors.New("readiness check failed")
 			},
@@ -80,7 +80,7 @@ func (s *HealthTestSuite) TestStartAndStopHealthCheck() {
 
 	testCases := []testCase{
 		{
-			name: "health check with no errors should succeed",
+			name: "HealthCheckWithNoErrorShouldSucceed",
 			readiness: func(_ context.Context) error {
 				return nil
 			},
@@ -89,7 +89,7 @@ func (s *HealthTestSuite) TestStartAndStopHealthCheck() {
 			},
 		},
 		{
-			name: "health check with errors should fail",
+			name: "HealthCheckWithErrorShouldFail",
 			readiness: func(_ context.Context) error {
 				return errors.New("check failed")
 			},
@@ -99,7 +99,7 @@ func (s *HealthTestSuite) TestStartAndStopHealthCheck() {
 			err: errors.New("check failed"),
 		},
 		{
-			name: "empty health check should succeed",
+			name: "EmptyHealthCheckShouldSucceed",
 			readiness: func(_ context.Context) error {
 				return nil
 			},

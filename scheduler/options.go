@@ -13,6 +13,13 @@ type options struct {
 	// The name is used for logging, metrics, and debugging purposes.
 	// It should be descriptive and unique within the application.
 	name string
+
+	// needsLeaderElection indicates if the scheduler needs leader election
+	//
+	// When set to true, the scheduler will only start when the leader election
+	// is active. If set to false, the scheduler will start immediately when the
+	// manager starts.
+	needsLeaderElection bool
 }
 
 // OptionFunc is a function that configures scheduler options.
@@ -52,5 +59,22 @@ func (o *options) setDefaults() error {
 func WithName(name string) OptionFunc {
 	return func(o *options) {
 		o.name = name
+	}
+}
+
+// WithNeedsLeaderElection sets if the scheduler needs leader election.
+//
+// The leader election configuration determines whether the scheduler will
+// only start when the leader election is active. If set to false, the scheduler
+// will start immediately when the manager starts.
+//
+// Parameters:
+//   - needsLeaderElection: true if the scheduler needs leader election, false otherwise
+//
+// Returns:
+//   - OptionFunc: A function that sets the leader election configuration
+func WithNeedsLeaderElection(needsLeaderElection bool) OptionFunc {
+	return func(o *options) {
+		o.needsLeaderElection = needsLeaderElection
 	}
 }

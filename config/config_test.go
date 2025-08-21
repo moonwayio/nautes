@@ -25,7 +25,7 @@ func (s *ConfigTestSuite) TearDownTest() {
 	loadConfigFromPath = s.originalLoadConfigFromPath
 }
 
-func (s *ConfigTestSuite) TestGetKubernetesConfigWithPath_Success() {
+func (s *ConfigTestSuite) TestGetKubernetesConfigWithPathSuccess() {
 	expectedConfig := &rest.Config{Host: "test-host"}
 	loadConfigFromPath = func(_ string) (*rest.Config, error) {
 		return expectedConfig, nil
@@ -38,7 +38,7 @@ func (s *ConfigTestSuite) TestGetKubernetesConfigWithPath_Success() {
 	s.Require().Equal(expectedConfig, config)
 }
 
-func (s *ConfigTestSuite) TestGetKubernetesConfigWithPath_Error() {
+func (s *ConfigTestSuite) TestGetKubernetesConfigWithPathError() {
 	expectedError := errors.New("config load error")
 	loadConfigFromPath = func(_ string) (*rest.Config, error) {
 		return nil, expectedError
@@ -51,7 +51,7 @@ func (s *ConfigTestSuite) TestGetKubernetesConfigWithPath_Error() {
 	s.Require().Contains(err.Error(), "error loading kubernetes configuration")
 }
 
-func (s *ConfigTestSuite) TestGetKubernetesConfigInCluster_Success() {
+func (s *ConfigTestSuite) TestGetKubernetesConfigInClusterSuccess() {
 	expectedConfig := &rest.Config{Host: "in-cluster-host"}
 	loadInClusterConfig = func() (*rest.Config, error) {
 		return expectedConfig, nil
@@ -63,7 +63,7 @@ func (s *ConfigTestSuite) TestGetKubernetesConfigInCluster_Success() {
 	s.Require().Equal(expectedConfig, config)
 }
 
-func (s *ConfigTestSuite) TestGetKubernetesConfigKubeconfigEnv_Success() {
+func (s *ConfigTestSuite) TestGetKubernetesConfigKubeconfigEnvSuccess() {
 	expectedConfig := &rest.Config{Host: "env-host"}
 	loadInClusterConfig = func() (*rest.Config, error) {
 		return nil, errors.New("in-cluster error")
@@ -88,7 +88,7 @@ func (s *ConfigTestSuite) TestGetKubernetesConfigKubeconfigEnv_Success() {
 	s.Require().Equal(expectedConfig, config)
 }
 
-func (s *ConfigTestSuite) TestGetKubernetesConfigHomeDir_Success() {
+func (s *ConfigTestSuite) TestGetKubernetesConfigHomeDirSuccess() {
 	expectedConfig := &rest.Config{Host: "home-host"}
 	loadInClusterConfig = func() (*rest.Config, error) {
 		return nil, errors.New("in-cluster error")

@@ -26,6 +26,13 @@ type options struct {
 	// This file contains the private key used for TLS encryption.
 	// Required when TLS is enabled.
 	keyFile string
+
+	// needsLeaderElection indicates if the webhook server needs leader election
+	//
+	// When set to true, the webhook server will only start when the leader election
+	// is active. If set to false, the webhook server will start immediately when the
+	// manager starts.
+	needsLeaderElection bool
 }
 
 // definitelyTrue is a helper variable for setting default TLS configuration.
@@ -113,5 +120,22 @@ func WithCertFile(certFile string) OptionFunc {
 func WithKeyFile(keyFile string) OptionFunc {
 	return func(o *options) {
 		o.keyFile = keyFile
+	}
+}
+
+// WithNeedsLeaderElection sets if the webhook server needs leader election.
+//
+// The leader election configuration determines whether the webhook server will
+// only start when the leader election is active. If set to false, the webhook server
+// will start immediately when the manager starts.
+//
+// Parameters:
+//   - needsLeaderElection: true if the webhook server needs leader election, false otherwise
+//
+// Returns:
+//   - OptionFunc: A function that sets the leader election configuration
+func WithNeedsLeaderElection(needsLeaderElection bool) OptionFunc {
+	return func(o *options) {
+		o.needsLeaderElection = needsLeaderElection
 	}
 }

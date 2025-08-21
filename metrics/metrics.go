@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog/v2"
 
-	"github.com/moonwayio/nautes/manager"
+	"github.com/moonwayio/nautes/component"
 )
 
 // Registry is the global metrics registry.
@@ -36,7 +36,7 @@ var Registry = prometheus.NewRegistry()
 // Implementations of this interface are concurrency safe and can be used concurrently
 // from multiple goroutines.
 type Server interface {
-	manager.Component
+	component.Component
 
 	// Register registers one or more Prometheus collectors.
 	//

@@ -28,18 +28,18 @@ func (s *KubeletTestSuite) TestNewKubeletClient() {
 
 	tests := []testCase{
 		{
-			name: "with no options",
+			name: "WithNoOptions",
 			opts: []OptionFunc{},
 			err:  "rest config is required",
 		},
 		{
-			name: "with rest config",
+			name: "WithRestConfig",
 			opts: []OptionFunc{
 				WithRestConfig(&rest.Config{}),
 			},
 		},
 		{
-			name: "with scheme",
+			name: "WithAllOptions",
 			opts: []OptionFunc{
 				WithRestConfig(&rest.Config{}),
 				WithScheme("http"),
@@ -76,7 +76,7 @@ func (s *KubeletTestSuite) TestGet() {
 
 	tests := []testCase{
 		{
-			name: "with response ok should succeed",
+			name: "WithResponseOkShouldSucceed",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`ok`))
@@ -84,7 +84,7 @@ func (s *KubeletTestSuite) TestGet() {
 			body: []byte(`ok`),
 		},
 		{
-			name: "with response not ok should return error",
+			name: "WithResponseNotOkShouldReturnError",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(`error`))
@@ -92,7 +92,7 @@ func (s *KubeletTestSuite) TestGet() {
 			err: "request failed",
 		},
 		{
-			name: "with no address should return error",
+			name: "WithNoAddressShouldReturnError",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`ok`))
@@ -101,7 +101,7 @@ func (s *KubeletTestSuite) TestGet() {
 			addresses: []corev1.NodeAddress{},
 		},
 		{
-			name: "with request fails should return error",
+			name: "WithRequestFailureShouldReturnError",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`ok`))
