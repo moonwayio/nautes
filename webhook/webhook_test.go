@@ -220,6 +220,27 @@ func (s *WebhookTestSuite) TestGetName() {
 	s.Require().Equal("webhook", server.GetName())
 }
 
+func (s *WebhookTestSuite) TestWebhookServerIdempotency() {
+	server, err := NewWebhookServer(8451, WithTLS(false))
+	s.Require().NoError(err)
+
+	// Test Start
+	err = server.Start()
+	s.Require().NoError(err)
+
+	// Start again should not error (idempotent)
+	err = server.Start()
+	s.Require().NoError(err)
+
+	// Test Stop
+	err = server.Stop()
+	s.Require().NoError(err)
+
+	// Stop again should not error (idempotent)
+	err = server.Stop()
+	s.Require().NoError(err)
+}
+
 func generateCertAndKey(t *testing.T) (string, string, error) {
 	t.Helper()
 	tempDir := t.TempDir()

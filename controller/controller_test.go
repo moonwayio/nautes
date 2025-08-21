@@ -370,6 +370,30 @@ func (s *ControllerTestSuite) TestGetName() {
 	s.Require().Equal("controller/test", controller.GetName())
 }
 
+func (s *ControllerTestSuite) TestControllerIdempotency() {
+	client := fake.NewSimpleClientset()
+	reconciler := func(_ context.Context, _ runtime.Object) error { return nil }
+
+	controller, err := NewController(reconciler, WithName("test"), WithClient(client))
+	s.Require().NoError(err)
+
+	// Test Start
+	err = controller.Start()
+	s.Require().NoError(err)
+
+	// Start again should not error (idempotent)
+	err = controller.Start()
+	s.Require().NoError(err)
+
+	// Test Stop
+	err = controller.Stop()
+	s.Require().NoError(err)
+
+	// Stop again should not error (idempotent)
+	err = controller.Stop()
+	s.Require().NoError(err)
+}
+
 func TestControllerTestSuite(t *testing.T) {
 	suite.Run(t, new(ControllerTestSuite))
 }

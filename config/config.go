@@ -1,4 +1,8 @@
 // Package config provides functions to get the Kubernetes config.
+//
+// The config package provides utilities for loading and managing Kubernetes client
+// configurations. It supports both in-cluster and out-of-cluster configurations,
+// with automatic fallback mechanisms for different deployment scenarios.
 package config
 
 import (
@@ -19,9 +23,23 @@ var loadConfigFromPath = func(path string) (*rest.Config, error) {
 	return clientcmd.BuildConfigFromFlags("", path)
 }
 
-// GetKubernetesConfig returns the Kubernetes config
-// if path is provided, it will be used to build the config. otherwise, it will try to use the in-cluster config
-// and fallback to the path of the KUBECONFIG environment variable or the kubeconfig in the home directory.
+// GetKubernetesConfig returns the Kubernetes configuration based on the provided path.
+//
+// The function implements a hierarchical configuration loading strategy:
+// 1. If a path is provided, it attempts to load the configuration from that path
+// 2. If no path is provided, it first tries to load the in-cluster configuration
+// 3. If in-cluster configuration fails, it falls back to the KUBECONFIG environment variable
+// 4. If KUBECONFIG is not set, it uses the default kubeconfig location (~/.kube/config)
+//
+// This approach ensures compatibility with various deployment scenarios including
+// local development, in-cluster deployments, and custom kubeconfig locations.
+//
+// Parameters:
+//   - path: The path to the kubeconfig file. If empty, automatic detection is used.
+//
+// Returns:
+//   - *rest.Config: The Kubernetes client configuration
+//   - error: Any error encountered during configuration loading
 func GetKubernetesConfig(path string) (*rest.Config, error) {
 	var config *rest.Config
 	var err error
@@ -48,7 +66,14 @@ func GetKubernetesConfig(path string) (*rest.Config, error) {
 	return config, nil
 }
 
-// IsInCluster returns true if the config is in cluster, false otherwise.
+// IsInCluster returns true if the current process is running inside a Kubernetes cluster.
+//
+// This function attempts to load the in-cluster configuration to determine if
+// the process is running inside a Kubernetes cluster. It's useful for adapting
+// application behavior based on the deployment environment.
+//
+// Returns:
+//   - bool: true if running in-cluster, false otherwise
 func IsInCluster() bool {
 	_, err := loadInClusterConfig()
 	return err == nil

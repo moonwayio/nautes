@@ -190,6 +190,26 @@ func (s *HealthTestSuite) TestStartAndStopHealthCheck() {
 	}
 }
 
+func (s *HealthTestSuite) TestHealthCheckIdempotency() {
+	health := NewHealthCheck(8081)
+
+	// Test Start
+	err := health.Start()
+	s.Require().NoError(err)
+
+	// Start again should not error (idempotent)
+	err = health.Start()
+	s.Require().NoError(err)
+
+	// Test Stop
+	err = health.Stop()
+	s.Require().NoError(err)
+
+	// Stop again should not error (idempotent)
+	err = health.Stop()
+	s.Require().NoError(err)
+}
+
 func (s *HealthTestSuite) TestGetName() {
 	health := NewHealthCheck(8080)
 	s.Equal("health-check", health.GetName())

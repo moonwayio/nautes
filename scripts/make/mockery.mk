@@ -15,6 +15,6 @@ _mockery.tools:
         if [ "$$PKG_MANAGER" = "brew" ]; then \
           	brew install mockery; \
         else \
-        	go install github.com/vektra/mockery/v3@v3.2.5; \
+        	go install github.com/vektra/mockery/v3@latest; \
         fi \
 	fi

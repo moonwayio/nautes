@@ -1,4 +1,19 @@
 // Package main provides an example application demonstrating the usage of the nautes library.
+//
+// This example shows how to create a basic Kubernetes controller using the nautes
+// framework. It demonstrates the complete lifecycle of a controller, from
+// initialization to resource watching and reconciliation.
+//
+// The example controller watches Pod resources in the kube-system namespace
+// and logs information about each pod when it is reconciled. This serves as
+// a template for building more complex controllers.
+//
+// To run this example:
+//
+//	go run main.go
+//
+// The controller will start watching pods in the kube-system namespace and
+// log information about each pod when it is reconciled.
 package main
 
 import (
@@ -25,11 +40,15 @@ import (
 	"github.com/moonwayio/nautes/manager"
 )
 
+// k8sScheme is the runtime scheme used for object serialization.
+//
+// This scheme is used by the controller to properly serialize and deserialize
+// Kubernetes objects. It can be extended to include custom resource types.
 var k8sScheme = scheme.Scheme
 
 func init() {
-	// add your custom schemes here
-	// yourscheme.AddToScheme(k8sScheme)
+	// Add your custom schemes here to support custom resource types.
+	// Example: yourscheme.AddToScheme(k8sScheme)
 }
 
 func main() {
@@ -38,8 +57,24 @@ func main() {
 	}
 }
 
-// Run starts the example application.
+// Run starts the example application and manages its lifecycle.
+//
+// This function demonstrates the complete setup and execution of a nautes-based
+// controller application. It includes:
+//   - Logger configuration with structured logging
+//   - Manager initialization and component registration
+//   - Kubernetes client configuration
+//   - Controller creation with custom reconciler
+//   - Resource watching setup
+//   - Graceful shutdown handling
+//
+// The function sets up signal handling to ensure graceful shutdown when
+// the application receives termination signals.
+//
+// Returns:
+//   - error: Any error encountered during application startup or execution
 func Run() error {
+	// Configure structured logging with zerolog
 	logger := zerolog.New(
 		zerolog.ConsoleWriter{
 			Out:        os.Stderr,
@@ -59,21 +94,28 @@ func Run() error {
 
 	klog.SetLogger(zerologr.New(&logger))
 
+	// Create a new manager instance
 	mgr, err := manager.NewManager()
 	if err != nil {
 		return fmt.Errorf("failed to create manager: %w", err)
 	}
 
+	// Load Kubernetes configuration
 	cfg, err := config.GetKubernetesConfig("")
 	if err != nil {
 		return fmt.Errorf("failed to get kubernetes config: %w", err)
 	}
 
+	// Create Kubernetes client
 	clientset, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create clientset: %w", err)
 	}
 
+	// Define the reconciler function
+	//
+	// This function is called for each resource that needs to be reconciled.
+	// In this example, it simply logs information about the pod being reconciled.
 	reconciler := func(ctx context.Context, obj runtime.Object) error {
 		log := klog.FromContext(ctx)
 		pod, ok := obj.(*corev1.Pod)
@@ -84,6 +126,7 @@ func Run() error {
 		return nil
 	}
 
+	// Create a new controller with the reconciler
 	ctrl, err := controller.NewController(
 		reconciler,
 		controller.WithName("test-controller"),
@@ -95,6 +138,7 @@ func Run() error {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 
+	// Add a resource retriever to watch pods in the kube-system namespace
 	err = ctrl.AddRetriever(&controller.ListerWatcher{
 		ListFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
 			return clientset.CoreV1().Pods("kube-system").List(ctx, options)
@@ -107,22 +151,26 @@ func Run() error {
 		return fmt.Errorf("failed to add retriever: %w", err)
 	}
 
+	// Register the controller with the manager
 	err = mgr.Register(ctrl)
 	if err != nil {
 		return fmt.Errorf("failed to register controller: %w", err)
 	}
 
-	err = mgr.Start()
-	if err != nil {
+	// Start the manager
+	if err := mgr.Start(); err != nil {
 		return fmt.Errorf("failed to start manager: %w", err)
 	}
 
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
-	<-signalChan
+	// Set up graceful shutdown
+	stopCh := make(chan os.Signal, 1)
+	signal.Notify(stopCh, syscall.SIGINT, syscall.SIGTERM)
 
-	err = mgr.Stop()
-	if err != nil {
+	// Wait for shutdown signal
+	<-stopCh
+
+	// Stop the manager gracefully
+	if err := mgr.Stop(); err != nil {
 		return fmt.Errorf("failed to stop manager: %w", err)
 	}
 

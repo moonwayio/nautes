@@ -141,6 +141,27 @@ func (s *SchedulerTestSuite) TestStartAndStopScheduler() {
 	}
 }
 
+func (s *SchedulerTestSuite) TestSchedulerIdempotency() {
+	scheduler, err := NewScheduler(WithName("test"))
+	s.Require().NoError(err)
+
+	// Test Start
+	err = scheduler.Start()
+	s.Require().NoError(err)
+
+	// Start again should not error (idempotent)
+	err = scheduler.Start()
+	s.Require().NoError(err)
+
+	// Test Stop
+	err = scheduler.Stop()
+	s.Require().NoError(err)
+
+	// Stop again should not error (idempotent)
+	err = scheduler.Stop()
+	s.Require().NoError(err)
+}
+
 func (s *SchedulerTestSuite) TestGetName() {
 	scheduler, err := NewScheduler(WithName("test"))
 	s.Require().NoError(err)
