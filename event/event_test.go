@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
+
+	"github.com/moonwayio/nautes/component"
 )
 
 type EventTestSuite struct {
@@ -25,26 +27,26 @@ func (s *EventTestSuite) TestNewRecorder() {
 
 	testCases := []testCase{
 		{
-			name: "no options should return error",
+			name: "NoOptionsShouldReturnError",
 			opts: []OptionFunc{},
 			err:  "name is required",
 		},
 		{
-			name: "no client should return error",
+			name: "NoClientShouldReturnError",
 			opts: []OptionFunc{
 				WithName("test"),
 			},
 			err: "client is required",
 		},
 		{
-			name: "with name and client should succeed",
+			name: "WithNameAndClientShouldSucceed",
 			opts: []OptionFunc{
 				WithName("test"),
 				WithClient(fake.NewSimpleClientset()),
 			},
 		},
 		{
-			name: "with all options should succeed",
+			name: "WithAllOptionsShouldSucceed",
 			opts: []OptionFunc{
 				WithName("test"),
 				WithClient(fake.NewSimpleClientset()),
@@ -76,14 +78,14 @@ func (s *EventTestSuite) TestStartAndStopRecorder() {
 
 	testCases := []testCase{
 		{
-			name: "basic recorder should start and stop",
+			name: "BasicRecorderShouldStartAndStop",
 			opts: []OptionFunc{
 				WithName("test"),
 				WithClient(fake.NewSimpleClientset()),
 			},
 		},
 		{
-			name: "recorder with custom scheme should start and stop",
+			name: "RecorderWithCustomSchemeShouldStartAndStop",
 			opts: []OptionFunc{
 				WithName("test"),
 				WithClient(fake.NewSimpleClientset()),
@@ -111,7 +113,7 @@ func (s *EventTestSuite) TestStartAndStopRecorder() {
 func (s *EventTestSuite) TestEventRecording() {
 	type testCase struct {
 		name      string
-		eventType EventType
+		eventType string
 		reason    string
 		message   string
 		object    runtime.Object
@@ -119,7 +121,7 @@ func (s *EventTestSuite) TestEventRecording() {
 
 	testCases := []testCase{
 		{
-			name:      "normal event should be recorded",
+			name:      "NormalEventShouldBeRecorded",
 			eventType: EventTypeNormal,
 			reason:    "TestReason",
 			message:   "Test message %s",
@@ -131,7 +133,7 @@ func (s *EventTestSuite) TestEventRecording() {
 			},
 		},
 		{
-			name:      "warning event should be recorded",
+			name:      "WarningEventShouldBeRecorded",
 			eventType: EventTypeWarning,
 			reason:    "TestWarning",
 			message:   "Test warning message %s",
@@ -207,6 +209,52 @@ func (s *EventTestSuite) TestEventRecorderIdempotency() {
 	// Stop again should not error (idempotent)
 	err = recorder.Stop()
 	s.Require().NoError(err)
+}
+
+func (s *EventTestSuite) TestEventRecorderNeedsLeaderElection() {
+	client := fake.NewSimpleClientset()
+
+	type testCase struct {
+		name     string
+		opts     []OptionFunc
+		expected bool
+	}
+
+	testCases := []testCase{
+		{
+			name:     "WithNoOptionShouldReturnFalse",
+			opts:     []OptionFunc{WithName("test"), WithClient(client)},
+			expected: false,
+		},
+		{
+			name: "WithNeedsLeaderElectionTrueShouldReturnTrue",
+			opts: []OptionFunc{
+				WithName("test"),
+				WithNeedsLeaderElection(true),
+				WithClient(client),
+			},
+			expected: true,
+		},
+
+		{
+			name: "WithNeedsLeaderElectionFalseShouldReturnFalse",
+			opts: []OptionFunc{
+				WithName("test"),
+				WithNeedsLeaderElection(false),
+				WithClient(client),
+			},
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			recorder, err := NewRecorder(tc.opts...)
+			s.Require().NoError(err)
+			s.Require().
+				Equal(tc.expected, recorder.(component.LeaderElectionAware).NeedsLeaderElection())
+		})
+	}
 }
 
 func TestEventTestSuite(t *testing.T) {

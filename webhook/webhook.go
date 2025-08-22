@@ -20,7 +20,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/moonwayio/nautes/manager"
+	"github.com/moonwayio/nautes/component"
 	"github.com/moonwayio/nautes/metrics"
 )
 
@@ -79,7 +79,7 @@ func init() {
 // Implementations of this interface are concurrency safe and can be used concurrently
 // from multiple goroutines.
 type Server interface {
-	manager.Component
+	component.Component
 
 	// Register registers a handler function for a specific HTTP path.
 	//
@@ -275,6 +275,18 @@ func (w *webhookServer) Stop() error {
 //   - string: The webhook server name
 func (w *webhookServer) GetName() string {
 	return "webhook"
+}
+
+// NeedsLeaderElection returns true if the webhook server needs leader election.
+//
+// The leader election configuration determines whether the webhook server will
+// only start when the leader election is active. If set to false, the webhook server
+// will start immediately when the manager starts.
+//
+// Returns:
+//   - bool: true if the webhook server needs leader election, false otherwise
+func (w *webhookServer) NeedsLeaderElection() bool {
+	return w.opts.needsLeaderElection
 }
 
 // handleWebhook handles incoming webhook requests.

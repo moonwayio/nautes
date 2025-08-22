@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 
-	"github.com/moonwayio/nautes/manager"
+	"github.com/moonwayio/nautes/component"
 	"github.com/moonwayio/nautes/metrics"
 )
 
@@ -76,7 +76,7 @@ func init() {
 // Implementations of this interface are concurrency safe and can be used concurrently
 // from multiple goroutines.
 type Scheduler interface {
-	manager.Component
+	component.Component
 
 	// AddTask adds a task to the scheduler with the specified execution interval.
 	//
@@ -260,4 +260,16 @@ func (s *scheduler) Stop() error {
 //   - string: The scheduler name in the format "scheduler/{name}"
 func (s *scheduler) GetName() string {
 	return "scheduler/" + s.opts.name
+}
+
+// NeedsLeaderElection indicates if the scheduler needs leader election
+//
+// When set to true, the scheduler will only start when the leader election
+// is active. If set to false, the scheduler will start immediately when the
+// manager starts.
+//
+// Returns:
+//   - bool: true if the scheduler needs leader election, false otherwise
+func (s *scheduler) NeedsLeaderElection() bool {
+	return s.opts.needsLeaderElection
 }

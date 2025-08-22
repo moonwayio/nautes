@@ -12,6 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes/fake"
+
+	"github.com/moonwayio/nautes/component"
 )
 
 type ControllerTestSuite struct {
@@ -30,13 +32,13 @@ func (s *ControllerTestSuite) TestNewController() {
 
 	testCases := []testCase{
 		{
-			name:       "no name should return error",
+			name:       "NoNameShouldReturnError",
 			reconciler: func(_ context.Context, _ runtime.Object) error { return nil },
 			opts:       []OptionFunc{},
 			err:        "name is required",
 		},
 		{
-			name:       "with name should succeed",
+			name:       "WithNameShouldSucceed",
 			reconciler: func(_ context.Context, _ runtime.Object) error { return nil },
 			opts: []OptionFunc{
 				WithName("test"),
@@ -44,7 +46,7 @@ func (s *ControllerTestSuite) TestNewController() {
 			err: "",
 		},
 		{
-			name:       "with all options should succeed",
+			name:       "WithAllOptionsShouldSucceed",
 			reconciler: func(_ context.Context, _ runtime.Object) error { return nil },
 			opts: []OptionFunc{
 				WithName("test"),
@@ -101,7 +103,7 @@ func (s *ControllerTestSuite) TestStartAndStopController() {
 
 	testCases := []testCase{
 		{
-			name: "normal reconciliation should succeed",
+			name: "NormalReconciliationShouldSucceed",
 			reconciler: func(_ context.Context, _ runtime.Object) error {
 				return nil
 			},
@@ -109,7 +111,7 @@ func (s *ControllerTestSuite) TestStartAndStopController() {
 			expectError:     false,
 		},
 		{
-			name: "reconciliation with error should still complete",
+			name: "ReconciliationWithErrorShouldStillComplete",
 			reconciler: func(_ context.Context, _ runtime.Object) error {
 				return errors.New("test error")
 			},
@@ -142,7 +144,6 @@ func (s *ControllerTestSuite) TestStartAndStopController() {
 			controller, err := NewController(
 				wrappedReconciler,
 				WithName("test"),
-				WithClient(client),
 			)
 			s.Require().NoError(err)
 
@@ -186,21 +187,21 @@ func (s *ControllerTestSuite) TestControllerStartAndStopWithDifferentConfigurati
 
 	testCases := []testCase{
 		{
-			name: "with custom scheme should work",
+			name: "WithCustomSchemeShouldWork",
 			opts: []OptionFunc{
 				WithName("test"),
 				WithScheme(runtime.NewScheme()),
 			},
 		},
 		{
-			name: "with resync interval should work",
+			name: "WithResyncIntervalShouldWork",
 			opts: []OptionFunc{
 				WithName("test"),
 				WithResyncInterval(1 * time.Second),
 			},
 		},
 		{
-			name: "with high concurrency should work",
+			name: "WithHighConcurrencyShouldWork",
 			opts: []OptionFunc{
 				WithName("test"),
 				WithConcurrency(3),
@@ -228,7 +229,7 @@ func (s *ControllerTestSuite) TestControllerStartAndStopWithDifferentConfigurati
 				return nil
 			}
 
-			controller, err := NewController(reconciler, append(tc.opts, WithClient(client))...)
+			controller, err := NewController(reconciler, tc.opts...)
 			s.Require().NoError(err)
 
 			// Create a mock retriever
@@ -269,7 +270,7 @@ func (s *ControllerTestSuite) TestControllerStartAndStopWithGVKMeta() {
 
 	testCases := []testCase{
 		{
-			name: "with proper GVK should reconcile",
+			name: "WithProperGVKShouldReconcile",
 			object: &metav1.PartialObjectMetadataList{
 				Items: []metav1.PartialObjectMetadata{
 					{
@@ -286,7 +287,7 @@ func (s *ControllerTestSuite) TestControllerStartAndStopWithGVKMeta() {
 			},
 		},
 		{
-			name: "without Kind should still reconcile",
+			name: "WithoutKindShouldStillReconcile",
 			object: &metav1.PartialObjectMetadataList{
 				Items: []metav1.PartialObjectMetadata{
 					{
@@ -303,7 +304,7 @@ func (s *ControllerTestSuite) TestControllerStartAndStopWithGVKMeta() {
 			},
 		},
 		{
-			name: "without Version should still reconcile",
+			name: "WithoutVersionShouldStillReconcile",
 			object: &metav1.PartialObjectMetadataList{
 				Items: []metav1.PartialObjectMetadata{
 					{
@@ -330,7 +331,7 @@ func (s *ControllerTestSuite) TestControllerStartAndStopWithGVKMeta() {
 				defer close(ch)
 				return nil
 			}
-			controller, err := NewController(reconciler, WithName("test"), WithClient(client))
+			controller, err := NewController(reconciler, WithName("test"))
 			s.Require().NoError(err)
 
 			// Create a mock retriever that returns PartialObjectMetadata
@@ -371,10 +372,9 @@ func (s *ControllerTestSuite) TestGetName() {
 }
 
 func (s *ControllerTestSuite) TestControllerIdempotency() {
-	client := fake.NewSimpleClientset()
 	reconciler := func(_ context.Context, _ runtime.Object) error { return nil }
 
-	controller, err := NewController(reconciler, WithName("test"), WithClient(client))
+	controller, err := NewController(reconciler, WithName("test"))
 	s.Require().NoError(err)
 
 	// Test Start
@@ -392,6 +392,44 @@ func (s *ControllerTestSuite) TestControllerIdempotency() {
 	// Stop again should not error (idempotent)
 	err = controller.Stop()
 	s.Require().NoError(err)
+}
+
+func (s *ControllerTestSuite) TestControllerNeedsLeaderElection() {
+	type testCase struct {
+		name     string
+		opts     []OptionFunc
+		expected bool
+	}
+
+	testCases := []testCase{
+		{
+			name:     "WithNoOptionShouldReturnFalse",
+			opts:     []OptionFunc{WithName("test")},
+			expected: false,
+		},
+		{
+			name:     "WithNeedsLeaderElectionTrueShouldReturnTrue",
+			opts:     []OptionFunc{WithName("test"), WithNeedsLeaderElection(true)},
+			expected: true,
+		},
+
+		{
+			name:     "WithNeedsLeaderElectionFalseShouldReturnFalse",
+			opts:     []OptionFunc{WithName("test"), WithNeedsLeaderElection(false)},
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			controller, err := NewController(
+				func(_ context.Context, _ runtime.Object) error { return nil },
+				tc.opts...)
+			s.Require().NoError(err)
+			s.Require().
+				Equal(tc.expected, controller.(component.LeaderElectionAware).NeedsLeaderElection())
+		})
+	}
 }
 
 func TestControllerTestSuite(t *testing.T) {

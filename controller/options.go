@@ -5,16 +5,8 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 )
-
-// OptionFunc is a function that configures controller options.
-//
-// OptionFunc is a functional option pattern that allows for flexible configuration
-// of controller instances. Each option function modifies the internal options
-// struct to customize the controller's behavior.
-type OptionFunc func(*options)
 
 // options contains all configurable parameters for a controller instance.
 //
@@ -40,20 +32,27 @@ type options struct {
 	// The default value is 1 if not specified.
 	concurrency int
 
-	// client is the Kubernetes client for API operations
-	//
-	// The client is used for all API operations including listing,
-	// watching, and updating resources. It must be properly configured
-	// with authentication and authorization.
-	client kubernetes.Interface
-
 	// scheme is the runtime scheme for object serialization
 	//
 	// The scheme defines how Kubernetes objects are converted between
 	// different formats. If not specified, the default Kubernetes
 	// scheme is used.
 	scheme *runtime.Scheme
+
+	// needsLeaderElection indicates if the controller needs leader election
+	//
+	// When set to true, the controller will only start when the leader election
+	// is active. If set to false, the controller will start immediately when the
+	// manager starts.
+	needsLeaderElection bool
 }
+
+// OptionFunc is a function that configures controller options.
+//
+// OptionFunc is a functional option pattern that allows for flexible configuration
+// of controller instances. Each option function modifies the internal options
+// struct to customize the controller's behavior.
+type OptionFunc func(*options)
 
 // setDefaults validates and sets default values for controller options.
 //
@@ -135,23 +134,6 @@ func WithConcurrency(concurrency int) OptionFunc {
 	}
 }
 
-// WithClient sets the Kubernetes client for the controller.
-//
-// The Kubernetes client is used for all API operations performed by the
-// controller, including listing, watching, and updating resources. The client
-// should be properly configured with authentication and authorization.
-//
-// Parameters:
-//   - client: The Kubernetes client interface to use
-//
-// Returns:
-//   - OptionFunc: A function that sets the Kubernetes client
-func WithClient(client kubernetes.Interface) OptionFunc {
-	return func(o *options) {
-		o.client = client
-	}
-}
-
 // WithScheme sets the runtime scheme for the controller.
 //
 // The runtime scheme is used for object serialization and deserialization.
@@ -166,5 +148,22 @@ func WithClient(client kubernetes.Interface) OptionFunc {
 func WithScheme(scheme *runtime.Scheme) OptionFunc {
 	return func(o *options) {
 		o.scheme = scheme
+	}
+}
+
+// WithNeedsLeaderElection sets if the controller needs leader election.
+//
+// The leader election configuration determines whether the controller will
+// only start when the leader election is active. If set to false, the controller
+// will start immediately when the manager starts.
+//
+// Parameters:
+//   - needsLeaderElection: true if the controller needs leader election, false otherwise
+//
+// Returns:
+//   - OptionFunc: A function that sets the leader election configuration
+func WithNeedsLeaderElection(needsLeaderElection bool) OptionFunc {
+	return func(o *options) {
+		o.needsLeaderElection = needsLeaderElection
 	}
 }

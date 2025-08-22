@@ -26,7 +26,7 @@ func (s *PatchTestSuite) TestGetJSONDiff() {
 
 	testCases := []testCase{
 		{
-			name: "with no diff should return nil",
+			name: "WithNoDiffShouldReturnNil",
 			obj: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
@@ -34,7 +34,7 @@ func (s *PatchTestSuite) TestGetJSONDiff() {
 			},
 		},
 		{
-			name: "with diff should return patch",
+			name: "WithDiffShouldReturnPatch",
 			obj: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",

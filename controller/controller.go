@@ -17,12 +17,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
-	"github.com/moonwayio/nautes/manager"
+	"github.com/moonwayio/nautes/component"
 	"github.com/moonwayio/nautes/metrics"
 )
 
@@ -96,7 +95,7 @@ type Reconciler func(ctx context.Context, obj runtime.Object) error
 // Implementations of this interface are concurrency safe and can be used concurrently
 // from multiple goroutines.
 type Controller interface {
-	manager.Component
+	component.Component
 
 	// AddRetriever adds a resource retriever to the controller.
 	//
@@ -120,8 +119,6 @@ type Controller interface {
 type controller struct {
 	opts       options
 	reconciler Reconciler
-	client     kubernetes.Interface
-	scheme     *runtime.Scheme
 	queue      workqueue.TypedRateLimitingInterface[string]
 	informers  []cache.SharedIndexInformer
 	logger     klog.Logger
@@ -157,8 +154,6 @@ func NewController(reconciler Reconciler, opts ...OptionFunc) (Controller, error
 	return &controller{
 		opts:       o,
 		reconciler: reconciler,
-		client:     o.client,
-		scheme:     o.scheme,
 		queue: workqueue.NewTypedRateLimitingQueue(
 			workqueue.DefaultTypedControllerRateLimiter[string](),
 		),
@@ -300,6 +295,18 @@ func (c *controller) GetName() string {
 	return "controller/" + c.opts.name
 }
 
+// NeedsLeaderElection indicates if the controller needs leader election.
+//
+// When set to true, the controller will only start when the leader election
+// is active. If set to false, the controller will start immediately when the
+// manager starts.
+//
+// Returns:
+//   - bool: true if the controller needs leader election, false otherwise
+func (c *controller) NeedsLeaderElection() bool {
+	return c.opts.needsLeaderElection
+}
+
 // runWorker runs the worker loop for processing items from the work queue.
 //
 // This method runs in a goroutine and continuously processes items from the
@@ -351,7 +358,7 @@ func (c *controller) processNextItem() bool {
 	}
 
 	// Populate the type metadata since it's not populated by the informer
-	meta, err := getGVKForObject(obj, c.scheme)
+	meta, err := getGVKForObject(obj, c.opts.scheme)
 	if err == nil {
 		obj.GetObjectKind().SetGroupVersionKind(meta)
 	}

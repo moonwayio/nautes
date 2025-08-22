@@ -22,7 +22,7 @@ func (s *MetricsTestSuite) TestRegister() {
 
 	testCases := []testCase{
 		{
-			name: "registering counter should succeed",
+			name: "RegisteringCounterShouldSucceed",
 			collector: prometheus.NewCounter(prometheus.CounterOpts{
 				Name: "test_counter",
 				Help: "A test counter",
@@ -30,7 +30,7 @@ func (s *MetricsTestSuite) TestRegister() {
 			err: "",
 		},
 		{
-			name: "registering gauge should succeed",
+			name: "RegisteringGaugeShouldSucceed",
 			collector: prometheus.NewGauge(prometheus.GaugeOpts{
 				Name: "test_gauge",
 				Help: "A test gauge",
@@ -38,7 +38,7 @@ func (s *MetricsTestSuite) TestRegister() {
 			err: "",
 		},
 		{
-			name: "registering histogram should succeed",
+			name: "RegisteringHistogramShouldSucceed",
 			collector: prometheus.NewHistogram(prometheus.HistogramOpts{
 				Name: "test_histogram",
 				Help: "A test histogram",
@@ -75,13 +75,13 @@ func (s *MetricsTestSuite) TestMetricsEndpoint() {
 
 	testCases := []testCase{
 		{
-			name:           "metrics endpoint should return prometheus format",
+			name:           "MetricsEndpointShouldReturnPrometheusFormat",
 			path:           "/metrics",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "test_counter 0",
 		},
 		{
-			name:           "metrics endpoint should return prometheus format with value at 1",
+			name:           "MetricsEndpointShouldReturnPrometheusFormatWithValueAt1",
 			path:           "/metrics",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "test_counter 1",
@@ -157,7 +157,7 @@ func (s *MetricsTestSuite) TestRegisterDuplicateMetric() {
 func (s *MetricsTestSuite) TestMetricsServerIdempotency() {
 	server := NewMetricsServer(9090)
 
-	// Test Start idempotency
+	// Test Start
 	err := server.Start()
 	s.Require().NoError(err)
 
@@ -165,7 +165,7 @@ func (s *MetricsTestSuite) TestMetricsServerIdempotency() {
 	err = server.Start()
 	s.Require().NoError(err)
 
-	// Test Stop idempotency
+	// Test Stop
 	err = server.Stop()
 	s.Require().NoError(err)
 

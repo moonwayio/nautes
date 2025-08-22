@@ -3,18 +3,28 @@
 [![codecov](https://codecov.io/github/moonwayio/nautes/graph/badge.svg?token=8GevoLW7M3)](https://codecov.io/github/moonwayio/nautes)
 [![CI](https://github.com/moonwayio/nautes/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/moonwayio/nautes/actions/workflows/ci.yaml)
 
-Nautes is a comprehensive Go framework for building Kubernetes-native applications. It provides a unified approach to creating controllers, schedulers, webhooks, and other Kubernetes components with built-in support for metrics, health checks, and graceful lifecycle management.
+Nautes is a comprehensive Go framework for building Kubernetes-native applications.
+It provides a unified approach to creating controllers, schedulers, webhooks, and
+other Kubernetes components with built-in support for metrics, health checks, and
+graceful lifecycle management.
 
 ## Features
 
-- **Component Lifecycle Management**: Centralized management of application components with graceful startup and shutdown
-- **Kubernetes Controller Framework**: Watch-queue-reconcile pattern implementation with configurable concurrency
-- **Task Scheduling**: Periodic task execution with configurable intervals and error handling
-- **Admission Webhooks**: HTTP server for mutating and validating admission webhooks
+- **Component Lifecycle Management**: Centralized management of application
+  components with graceful startup and shutdown
+- **Kubernetes Controller Framework**: Watch-queue-reconcile pattern
+  implementation with configurable concurrency
+- **Task Scheduling**: Periodic task execution with configurable intervals and
+  error handling
+- **Admission Webhooks**: HTTP server for mutating and validating admission
+  webhooks
 - **Health Checks**: Kubernetes-compatible liveness and readiness probe endpoints
 - **Metrics Collection**: Prometheus metrics exposition with built-in monitoring
-- **Kubelet Communication**: Direct API access to node kubelets for advanced monitoring
-- **Configuration Management**: Flexible Kubernetes client configuration with automatic detection
+- **Kubelet Communication**: Direct API access to node kubelets for advanced
+  monitoring
+- **Configuration Management**: Flexible Kubernetes client configuration with
+  automatic detection
+- **Leader Election**: Kubernetes lease-based leader election for high availability
 - **Concurrency Safe Operations**: All components designed for concurrent usage
 - **Structured Logging**: Comprehensive logging with context and structured output
 
@@ -100,7 +110,9 @@ func main() {
 
 #### Manager
 
-The `manager` package provides the central orchestration for all framework components. It handles component registration, lifecycle management, and graceful shutdown coordination.
+The `manager` package provides the central orchestration for all framework
+components. It handles component registration, lifecycle management, and graceful
+shutdown coordination.
 
 ```go
 mgr, err := manager.NewManager()
@@ -124,7 +136,9 @@ defer mgr.Stop()
 
 #### Controller
 
-The `controller` package implements the watch-queue-reconcile pattern for Kubernetes controllers. It provides resource watching, event queuing, and reconciliation coordination.
+The `controller` package implements the watch-queue-reconcile pattern for
+Kubernetes controllers. It provides resource watching, event queuing, and
+reconciliation coordination.
 
 ```go
 reconciler := func(ctx context.Context, obj runtime.Object) error {
@@ -142,7 +156,8 @@ ctrl, err := controller.NewController(
 
 #### Scheduler
 
-The `scheduler` package provides periodic task execution with configurable intervals and error handling.
+The `scheduler` package provides periodic task execution with configurable
+intervals and error handling.
 
 ```go
 task := func(ctx context.Context) error {
@@ -165,7 +180,9 @@ sched.AddTask(task, 5*time.Minute)
 The `webhook` package implements HTTP servers for Kubernetes admission webhooks.
 
 ```go
-handler := func(ctx context.Context, request *admissionv1.AdmissionRequest) (*admissionv1.AdmissionResponse, error) {
+handler := func(ctx context.Context, request *admissionv1.AdmissionRequest) (
+    *admissionv1.AdmissionResponse, error,
+) {
     return &admissionv1.AdmissionResponse{Allowed: true}, nil
 }
 
@@ -179,7 +196,8 @@ server.Register("/mutate", handler)
 
 #### Health Checks
 
-The `health` package provides Kubernetes-compatible liveness and readiness probe endpoints.
+The `health` package provides Kubernetes-compatible liveness and readiness probe
+endpoints.
 
 ```go
 healthServer := health.NewHealthCheck(8080)
@@ -213,11 +231,73 @@ counter := prometheus.NewCounter(prometheus.CounterOpts{
 metricsServer.Register(counter)
 ```
 
+#### Leader Election
+
+The `leader` package provides Kubernetes lease-based leader election functionality
+for high availability and preventing split-brain scenarios in multi-replica
+deployments.
+
+```go
+// Create leader elector
+leaderElector, err := leader.NewLeader(
+    leader.WithID("my-operator"),
+    leader.WithName("my-operator"),
+    leader.WithClient(clientset),
+    leader.WithLeaseLockName("my-operator"),
+    leader.WithLeaseLockNamespace("default"),
+    leader.WithLeaseDuration(30*time.Second),
+    leader.WithRenewDeadline(20*time.Second),
+    leader.WithRetryPeriod(5*time.Second),
+)
+if err != nil {
+    return err
+}
+
+// Create manager with leader election
+mgr, err := manager.NewManager(manager.WithLeader(leaderElector))
+if err != nil {
+    return err
+}
+
+// Create controller that needs leader election
+ctrl, err := controller.NewController(
+    reconciler,
+    controller.WithName("my-controller"),
+    controller.WithNeedsLeaderElection(true),
+)
+if err != nil {
+    return err
+}
+
+// Register controller (will only start when leader)
+mgr.Register(ctrl)
+```
+
+Components can also implement the `ElectionSubscriber` interface to receive
+notifications about leadership changes:
+
+```go
+type MyComponent struct {
+    isLeading bool
+}
+
+func (m *MyComponent) OnStartLeading() {
+    m.isLeading = true
+    log.Info("Became leader, starting leader-specific work")
+}
+
+func (m *MyComponent) OnStopLeading() {
+    m.isLeading = false
+    log.Info("Lost leadership, stopping leader-specific work")
+}
+```
+
 ## Configuration
 
 ### Kubernetes Client Configuration
 
-The `config` package provides flexible Kubernetes client configuration with automatic detection:
+The `config` package provides flexible Kubernetes client configuration with
+automatic detection:
 
 ```go
 // Automatic configuration detection
@@ -240,10 +320,11 @@ if config.IsInCluster() {
 
 ## Examples
 
-The `examples` directory contains comprehensive examples demonstrating various use cases:
+The `examples` directory contains comprehensive examples demonstrating various use
+cases:
 
 - **basic-controller**: Simple controller watching pods
 - **basic-scheduler**: Periodic task execution
 - **basic-webhook**: Admission webhook implementation
 - **basic-kubelet-client**: Direct kubelet communication
-- **operator**: Complete operator pattern implementation
+- **operator**: Complete operator pattern implementation with leader election

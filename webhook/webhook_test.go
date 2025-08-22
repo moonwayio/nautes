@@ -20,6 +20,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/moonwayio/nautes/component"
 )
 
 type WebhookTestSuite struct {
@@ -39,25 +41,25 @@ func (s *WebhookTestSuite) TestWebhookServer() {
 
 	testCases := []testCase{
 		{
-			name:      "with no options should return error",
+			name:      "WithNoOptionsShouldReturnError",
 			opts:      []OptionFunc{},
 			createErr: "certFile is required",
 		},
 		{
-			name: "with TLS disabled should succeed",
+			name: "WithTLSDisabledShouldSucceed",
 			opts: []OptionFunc{
 				WithTLS(false),
 			},
 		},
 		{
-			name: "with TLS enabled but no cert files should return error",
+			name: "WithTLSNoCertFilesShouldReturnError",
 			opts: []OptionFunc{
 				WithTLS(true),
 			},
 			createErr: "certFile is required",
 		},
 		{
-			name: "with TLS enabled but no key files should return error",
+			name: "WithTLSNoKeyFilesShouldReturnError",
 			opts: []OptionFunc{
 				WithTLS(true),
 				WithCertFile(certFile),
@@ -65,7 +67,7 @@ func (s *WebhookTestSuite) TestWebhookServer() {
 			createErr: "keyFile is required",
 		},
 		{
-			name: "with TLS enabled and invalid cert file should return error",
+			name: "WithTLSInvalidCertFileShouldReturnError",
 			opts: []OptionFunc{
 				WithTLS(true),
 				WithCertFile("/tmp/cert.pem"),
@@ -74,7 +76,7 @@ func (s *WebhookTestSuite) TestWebhookServer() {
 			startErr: "cert file does not exist",
 		},
 		{
-			name: "with TLS enabled and invalid key file should return error",
+			name: "WithTLSInvalidKeyFileShouldReturnError",
 			opts: []OptionFunc{
 				WithTLS(true),
 				WithCertFile(certFile),
@@ -83,7 +85,7 @@ func (s *WebhookTestSuite) TestWebhookServer() {
 			startErr: "key file does not exist",
 		},
 		{
-			name: "with valid TLS enabled and cert files should succeed",
+			name: "WithValidTLSCertFilesShouldSucceed",
 			opts: []OptionFunc{
 				WithTLS(true),
 				WithCertFile(certFile),
@@ -303,6 +305,42 @@ func generateCertAndKey(t *testing.T) (string, string, error) {
 	}
 
 	return certFile, keyFile, nil
+}
+
+func (s *WebhookTestSuite) TestWebhookServerNeedsLeaderElection() {
+	type testCase struct {
+		name     string
+		opts     []OptionFunc
+		expected bool
+	}
+
+	testCases := []testCase{
+		{
+			name:     "WithNoOptionShouldReturnFalse",
+			opts:     []OptionFunc{WithTLS(false)},
+			expected: false,
+		},
+		{
+			name:     "WithNeedsLeaderElectionTrueShouldReturnTrue",
+			opts:     []OptionFunc{WithNeedsLeaderElection(true), WithTLS(false)},
+			expected: true,
+		},
+
+		{
+			name:     "WithNeedsLeaderElectionFalseShouldReturnFalse",
+			opts:     []OptionFunc{WithNeedsLeaderElection(false), WithTLS(false)},
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			webhook, err := NewWebhookServer(8451, tc.opts...)
+			s.Require().NoError(err)
+			s.Require().
+				Equal(tc.expected, webhook.(component.LeaderElectionAware).NeedsLeaderElection())
+		})
+	}
 }
 
 func TestWebhookTestSuite(t *testing.T) {

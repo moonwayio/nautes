@@ -2,18 +2,21 @@
 //
 // This example shows how to create a complete Kubernetes operator using the nautes
 // framework. It demonstrates the integration of multiple components including
-// controllers, webhooks, health checks, and metrics collection.
+// controllers, webhooks, health checks, metrics collection, and leader election.
 //
 // The example operator watches pods in the kube-system namespace, adds labels
 // to pods through a mutating webhook, and exposes metrics and health endpoints.
-// This serves as a comprehensive template for building production-ready operators.
+// It includes leader election to ensure high availability and prevent split-brain
+// scenarios when running multiple replicas. This serves as a comprehensive template
+// for building production-ready operators.
 //
 // To run this example:
 //
 //	go run main.go
 //
 // The operator will start multiple components:
-//   - Controller watching pods in kube-system namespace
+//   - Leader election using Kubernetes leases (only leader processes pods)
+//   - Controller watching pods in kube-system namespace (leader-only)
 //   - Webhook server on port 8081 adding labels to pods
 //   - Health check server on port 8080
 //   - Metrics server on port 8082
@@ -43,6 +46,7 @@ import (
 	"github.com/moonwayio/nautes/config"
 	"github.com/moonwayio/nautes/controller"
 	"github.com/moonwayio/nautes/health"
+	"github.com/moonwayio/nautes/leader"
 	"github.com/moonwayio/nautes/manager"
 	"github.com/moonwayio/nautes/metrics"
 	"github.com/moonwayio/nautes/webhook"
@@ -68,14 +72,20 @@ func main() {
 // Run starts the example application and manages its lifecycle.
 //
 // This function demonstrates the complete setup and execution of a nautes-based
-// operator application. It includes:
+// operator application with leader election. It includes:
 //   - Logger configuration with structured logging
-//   - Manager initialization and multi-component registration
-//   - Controller creation with custom reconciler
+//   - Leader election setup using Kubernetes leases
+//   - Manager initialization with leader election support
+//   - Controller creation with custom reconciler (leader-only)
 //   - Webhook server with mutating admission webhook
 //   - Health check server with readiness probe
 //   - Metrics server with custom metrics
 //   - Graceful shutdown handling
+//
+// The controller is configured with leader election awareness using the
+// WithNeedsLeaderElection option, ensuring it only processes resources when
+// this instance is the elected leader. This prevents conflicts when running
+// multiple replicas of the operator.
 //
 // The function sets up signal handling to ensure graceful shutdown when
 // the application receives termination signals.
@@ -103,12 +113,6 @@ func Run() error {
 
 	klog.SetLogger(zerologr.New(&logger))
 
-	// Create a new manager instance
-	mgr, err := manager.NewManager()
-	if err != nil {
-		return fmt.Errorf("failed to create manager: %w", err)
-	}
-
 	// Load Kubernetes configuration
 	cfg, err := config.GetKubernetesConfig("")
 	if err != nil {
@@ -119,6 +123,27 @@ func Run() error {
 	clientset, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create clientset: %w", err)
+	}
+
+	// Create a leader elector for high availability
+	leaderElector, err := leader.NewLeader(
+		leader.WithID("operator-example"),
+		leader.WithName("operator-example"),
+		leader.WithClient(clientset),
+		leader.WithLeaseLockName("operator-example"),
+		leader.WithLeaseLockNamespace("default"),
+		leader.WithLeaseDuration(30*time.Second),
+		leader.WithRenewDeadline(20*time.Second),
+		leader.WithRetryPeriod(5*time.Second),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create leader elector: %w", err)
+	}
+
+	// Create a new manager instance with leader election
+	mgr, err := manager.NewManager(manager.WithLeader(leaderElector))
+	if err != nil {
+		return fmt.Errorf("failed to create manager: %w", err)
 	}
 
 	// Use the default Kubernetes scheme
@@ -141,8 +166,8 @@ func Run() error {
 	ctrl, err := controller.NewController(
 		reconciler,
 		controller.WithName("test-controller"),
-		controller.WithClient(clientset),
 		controller.WithScheme(scheme),
+		controller.WithNeedsLeaderElection(true),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)

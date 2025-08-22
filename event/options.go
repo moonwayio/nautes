@@ -34,6 +34,13 @@ type options struct {
 	// API server. It must be properly configured with authentication
 	// and authorization settings.
 	client kubernetes.Interface
+
+	// needsLeaderElection indicates if the event recorder needs leader election
+	//
+	// When set to true, the event recorder will only start when the leader election
+	// is active. If set to false, the event recorder will start immediately when the
+	// manager starts.
+	needsLeaderElection bool
 }
 
 // OptionFunc is a function that configures event recorder options.
@@ -119,5 +126,22 @@ func WithClient(client kubernetes.Interface) OptionFunc {
 func WithScheme(scheme *runtime.Scheme) OptionFunc {
 	return func(o *options) {
 		o.scheme = scheme
+	}
+}
+
+// WithNeedsLeaderElection sets if the event recorder needs leader election.
+//
+// The leader election configuration determines whether the event recorder will
+// only start when the leader election is active. If set to false, the event recorder
+// will start immediately when the manager starts.
+//
+// Parameters:
+//   - needsLeaderElection: true if the event recorder needs leader election, false otherwise
+//
+// Returns:
+//   - OptionFunc: A function that sets the leader election configuration
+func WithNeedsLeaderElection(needsLeaderElection bool) OptionFunc {
+	return func(o *options) {
+		o.needsLeaderElection = needsLeaderElection
 	}
 }

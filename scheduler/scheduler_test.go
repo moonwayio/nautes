@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/moonwayio/nautes/component"
 )
 
 type SchedulerTestSuite struct {
@@ -24,12 +26,12 @@ func (s *SchedulerTestSuite) TestNewScheduler() {
 
 	testCases := []testCase{
 		{
-			name: "no options should return error",
+			name: "NoOptionsShouldReturnError",
 			opts: []OptionFunc{},
 			err:  "name is required",
 		},
 		{
-			name: "with name should succeed",
+			name: "WithNameShouldSucceed",
 			opts: []OptionFunc{
 				WithName("test"),
 			},
@@ -61,7 +63,7 @@ func (s *SchedulerTestSuite) TestAddTask() {
 
 	testCases := []testCase{
 		{
-			name: "with task and duration should succeed",
+			name: "WithTaskAndDurationShouldSucceed",
 			task: NewTask(func(_ context.Context) error {
 				return nil
 			}),
@@ -69,7 +71,7 @@ func (s *SchedulerTestSuite) TestAddTask() {
 			err:      "",
 		},
 		{
-			name: "with task and duration less than 1 second should return error",
+			name: "WithTaskAndDurationLessThan1SecondShouldReturnError",
 			task: NewTask(func(_ context.Context) error {
 				return nil
 			}),
@@ -101,11 +103,11 @@ func (s *SchedulerTestSuite) TestStartAndStopScheduler() {
 
 	testCases := []testCase{
 		{
-			name: "normal task execution should succeed",
+			name: "NormalTaskExecutionShouldSucceed",
 			err:  nil,
 		},
 		{
-			name: "task execution with error should still complete",
+			name: "TaskExecutionWithErrorShouldStillComplete",
 			err:  errors.New("test error"),
 		},
 	}
@@ -166,6 +168,42 @@ func (s *SchedulerTestSuite) TestGetName() {
 	scheduler, err := NewScheduler(WithName("test"))
 	s.Require().NoError(err)
 	s.Require().Equal("scheduler/test", scheduler.GetName())
+}
+
+func (s *SchedulerTestSuite) TestSchedulerNeedsLeaderElection() {
+	type testCase struct {
+		name     string
+		opts     []OptionFunc
+		expected bool
+	}
+
+	testCases := []testCase{
+		{
+			name:     "WithNoOptionShouldReturnFalse",
+			opts:     []OptionFunc{WithName("test")},
+			expected: false,
+		},
+		{
+			name:     "WithNeedsLeaderElectionTrueShouldReturnTrue",
+			opts:     []OptionFunc{WithName("test"), WithNeedsLeaderElection(true)},
+			expected: true,
+		},
+
+		{
+			name:     "WithNeedsLeaderElectionFalseShouldReturnFalse",
+			opts:     []OptionFunc{WithName("test"), WithNeedsLeaderElection(false)},
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			scheduler, err := NewScheduler(tc.opts...)
+			s.Require().NoError(err)
+			s.Require().
+				Equal(tc.expected, scheduler.(component.LeaderElectionAware).NeedsLeaderElection())
+		})
+	}
 }
 
 func TestSchedulerTestSuite(t *testing.T) {

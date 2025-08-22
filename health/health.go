@@ -16,7 +16,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/moonwayio/nautes/manager"
+	"github.com/moonwayio/nautes/component"
 )
 
 // Check provides health check functionality.
@@ -28,7 +28,7 @@ import (
 // Implementations of this interface are concurrency safe and can be used concurrently
 // from multiple goroutines.
 type Check interface {
-	manager.Component
+	component.Component
 
 	// RegisterReadiness registers a readiness check function.
 	//
