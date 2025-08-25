@@ -206,7 +206,7 @@ func (s *HealthTestSuite) TestStartAndStopHealthCheck() {
 }
 
 func (s *HealthTestSuite) TestHealthCheckIdempotency() {
-	health := NewHealthCheck(8081)
+	health := NewHealthCheck(8000)
 
 	// Test Start
 	err := health.Start()

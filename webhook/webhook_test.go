@@ -238,7 +238,7 @@ func (s *WebhookTestSuite) TestGetName() {
 }
 
 func (s *WebhookTestSuite) TestWebhookServerIdempotency() {
-	server, err := NewWebhookServer(8451, WithTLS(false))
+	server, err := NewWebhookServer(8400, WithTLS(false))
 	s.Require().NoError(err)
 
 	// Test Start
@@ -256,6 +256,42 @@ func (s *WebhookTestSuite) TestWebhookServerIdempotency() {
 	// Stop again should not error (idempotent)
 	err = server.Stop()
 	s.Require().NoError(err)
+}
+
+func (s *WebhookTestSuite) TestWebhookServerNeedsLeaderElection() {
+	type testCase struct {
+		name     string
+		opts     []OptionFunc
+		expected bool
+	}
+
+	testCases := []testCase{
+		{
+			name:     "WithNoOptionShouldReturnFalse",
+			opts:     []OptionFunc{WithTLS(false)},
+			expected: false,
+		},
+		{
+			name:     "WithNeedsLeaderElectionTrueShouldReturnTrue",
+			opts:     []OptionFunc{WithNeedsLeaderElection(true), WithTLS(false)},
+			expected: true,
+		},
+
+		{
+			name:     "WithNeedsLeaderElectionFalseShouldReturnFalse",
+			opts:     []OptionFunc{WithNeedsLeaderElection(false), WithTLS(false)},
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			webhook, err := NewWebhookServer(8443, tc.opts...)
+			s.Require().NoError(err)
+			s.Require().
+				Equal(tc.expected, webhook.(component.LeaderElectionAware).NeedsLeaderElection())
+		})
+	}
 }
 
 func generateCertAndKey(t *testing.T) (string, string, error) {
@@ -320,42 +356,6 @@ func generateCertAndKey(t *testing.T) (string, string, error) {
 	}
 
 	return certFile, keyFile, nil
-}
-
-func (s *WebhookTestSuite) TestWebhookServerNeedsLeaderElection() {
-	type testCase struct {
-		name     string
-		opts     []OptionFunc
-		expected bool
-	}
-
-	testCases := []testCase{
-		{
-			name:     "WithNoOptionShouldReturnFalse",
-			opts:     []OptionFunc{WithTLS(false)},
-			expected: false,
-		},
-		{
-			name:     "WithNeedsLeaderElectionTrueShouldReturnTrue",
-			opts:     []OptionFunc{WithNeedsLeaderElection(true), WithTLS(false)},
-			expected: true,
-		},
-
-		{
-			name:     "WithNeedsLeaderElectionFalseShouldReturnFalse",
-			opts:     []OptionFunc{WithNeedsLeaderElection(false), WithTLS(false)},
-			expected: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		s.Run(tc.name, func() {
-			webhook, err := NewWebhookServer(8451, tc.opts...)
-			s.Require().NoError(err)
-			s.Require().
-				Equal(tc.expected, webhook.(component.LeaderElectionAware).NeedsLeaderElection())
-		})
-	}
 }
 
 func TestWebhookTestSuite(t *testing.T) {
