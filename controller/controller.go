@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
@@ -98,32 +99,54 @@ func init() {
 //
 // Returns:
 //   - error: Any error encountered during reconciliation
-type Reconciler func(ctx context.Context, obj runtime.Object) error
+type Reconciler func(ctx context.Context, obj Delta[runtime.Object]) error
 
 // Controller implements the watch–queue–reconcile loop.
 //
 // The Controller interface provides methods to manage the lifecycle of a Kubernetes
 // controller. It handles resource watching, event queuing, and reconciliation
 // coordination. The controller can watch multiple resource types and process
-// events concurrently.
+// events concurrently with advanced filtering and transformation capabilities.
+//
+// The controller supports:
+//   - Multiple resource retrievers for different resource types
+//   - Configurable event filtering to process only relevant events
+//   - Event transformation for data enrichment or normalization
+//   - Concurrent processing with configurable worker pools
+//   - Built-in metrics and monitoring
 //
 // Implementations of this interface are concurrency safe and can be used concurrently
 // from multiple goroutines.
 type Controller interface {
 	component.Component
 
-	// AddRetriever adds a resource retriever to the controller.
+	// AddRetriever adds a resource retriever to the controller with optional filtering and transformation.
 	//
 	// The retriever provides the List and Watch functions needed to monitor
 	// Kubernetes resources. Multiple retrievers can be added to watch different
 	// resource types or namespaces.
 	//
+	// The filters parameter allows you to specify functions that determine which
+	// events should be processed. Events that don't pass any filter are discarded.
+	// If no filters are provided, all events are processed.
+	//
+	// The transformers parameter allows you to specify functions that modify
+	// objects before they are queued for reconciliation. Transformers are applied
+	// in order and can be used for data enrichment, normalization, or other
+	// preprocessing tasks.
+	//
 	// Parameters:
 	//   - retriever: The retriever to add for resource watching
+	//   - filters: Optional list of filter functions to determine which events to process
+	//   - transformers: Optional list of transformer functions to modify objects before processing
 	//
 	// Returns:
 	//   - error: Any error encountered while adding the retriever
-	AddRetriever(retriever Retriever) error
+	AddRetriever(
+		retriever Retriever,
+		filters []FilterFunc[runtime.Object],
+		transformers []TransformerFunc[runtime.Object],
+	) error
 }
 
 // controller implements the Controller interface.
@@ -131,10 +154,14 @@ type Controller interface {
 // The controller maintains a work queue for processing events and coordinates
 // the reconciliation of resources. It uses informers to watch Kubernetes
 // resources and enqueue events for processing by worker goroutines.
+//
+// The controller supports advanced event processing with filtering and transformation
+// capabilities, allowing for fine-grained control over which events are processed
+// and how objects are modified before reconciliation.
 type controller struct {
 	opts       options
 	reconciler Reconciler
-	queue      workqueue.TypedRateLimitingInterface[string]
+	queue      workqueue.TypedRateLimitingInterface[Delta[runtime.Object]]
 	informers  []cache.SharedIndexInformer
 	logger     klog.Logger
 
@@ -170,7 +197,7 @@ func NewController(reconciler Reconciler, opts ...OptionFunc) (Controller, error
 		opts:       o,
 		reconciler: reconciler,
 		queue: workqueue.NewTypedRateLimitingQueue(
-			workqueue.DefaultTypedControllerRateLimiter[string](),
+			workqueue.DefaultTypedControllerRateLimiter[Delta[runtime.Object]](),
 		),
 		informers: make([]cache.SharedIndexInformer, 0),
 		logger:    klog.Background().WithValues("component", "controller/"+o.name),
@@ -178,12 +205,16 @@ func NewController(reconciler Reconciler, opts ...OptionFunc) (Controller, error
 	}, nil
 }
 
-// AddRetriever adds a resource retriever to the controller.
+// AddRetriever adds a resource retriever to the controller with filtering and transformation capabilities.
 //
 // This method creates an informer for the provided retriever and registers
 // event handlers to enqueue resource changes for processing. The informer
 // will watch for resource creation, updates, and deletions, adding them
 // to the work queue for reconciliation.
+//
+// The method applies filters to determine which events should be processed,
+// and transformers to modify objects before they are queued. This allows
+// for fine-grained control over event processing and data enrichment.
 //
 // The method is concurrency safe and can be called multiple times to add
 // different retrievers for various resource types or namespaces.
@@ -191,15 +222,19 @@ func NewController(reconciler Reconciler, opts ...OptionFunc) (Controller, error
 // Parameters:
 //   - retriever: The resource retriever to add. Must not be nil and must
 //     provide valid List and Watch functions.
+//   - filters: Optional list of filter functions to determine which events to process
+//   - transformers: Optional list of transformer functions to modify objects before processing
 //
 // Returns:
 //   - error: Any error encountered while setting up the informer or
 //     registering event handlers
-func (c *controller) AddRetriever(retriever Retriever) error {
+func (c *controller) AddRetriever(
+	retriever Retriever,
+	filters []FilterFunc[runtime.Object],
+	transformers []TransformerFunc[runtime.Object],
+) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	store := cache.Indexers{}
 
 	lw := &cache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -208,36 +243,26 @@ func (c *controller) AddRetriever(retriever Retriever) error {
 		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 			return retriever.Watch(context.Background(), options)
 		},
+		ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+			return retriever.List(ctx, options)
+		},
+		WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+			return retriever.Watch(ctx, options)
+		},
 	}
 
-	informer := cache.NewSharedIndexInformer(lw, nil, c.opts.resyncInterval, store)
+	informer := cache.NewSharedIndexInformer(
+		lw,
+		nil,
+		c.opts.resyncInterval,
+		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
+	)
 
-	_, err := informer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			key, err := cache.MetaNamespaceKeyFunc(obj)
-			if err != nil {
-				c.logger.Info("could not add item from 'add' event to queue", "error", err)
-				return
-			}
-			c.queue.Add(key)
-		},
-		UpdateFunc: func(_, newObj any) {
-			key, err := cache.MetaNamespaceKeyFunc(newObj)
-			if err != nil {
-				c.logger.Info("could not add item from 'update' event to queue", "error", err)
-				return
-			}
-			c.queue.Add(key)
-		},
-		DeleteFunc: func(obj any) {
-			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
-			if err != nil {
-				c.logger.Info("could not add item from 'delete' event to queue", "error", err)
-				return
-			}
-			c.queue.Add(key)
-		},
-	}, c.opts.resyncInterval)
+	transformers = append(transformers, GVKTransformer(c.opts.scheme))
+
+	eventHandler := NewEventHandler(c.queue, filters, transformers, c.logger)
+
+	_, err := informer.AddEventHandlerWithResyncPeriod(eventHandler, c.opts.resyncInterval)
 	if err != nil {
 		return fmt.Errorf("failed to add event handler: %w", err)
 	}
@@ -251,6 +276,7 @@ func (c *controller) AddRetriever(retriever Retriever) error {
 func (c *controller) Start() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	defer utilruntime.HandleCrash()
 
 	// if the controller is already started, return nil to ensure idempotency
 	if c.started {
@@ -353,30 +379,13 @@ func (c *controller) processNextItem() bool {
 	ctx := context.Background()
 
 	// Get the next item from the work queue
-	key, shutdown := c.queue.Get()
+	item, shutdown := c.queue.Get()
 	if shutdown {
 		return false
 	}
 
 	// Mark the item as done when we finish processing it
-	defer c.queue.Done(key)
-
-	// Retrieve the object from the informer cache
-	obj, exists, err := c.getObject(key)
-	if err != nil {
-		c.logger.Error(err, "failed to get object", "key", key)
-		return true
-	}
-
-	if !exists {
-		return true
-	}
-
-	// Populate the type metadata since it's not populated by the informer
-	meta, err := getGVKForObject(obj, c.opts.scheme)
-	if err == nil {
-		obj.GetObjectKind().SetGroupVersionKind(meta)
-	}
+	defer c.queue.Done(item)
 
 	loggerCtx := klog.NewContext(ctx, c.logger)
 
@@ -385,8 +394,8 @@ func (c *controller) processNextItem() bool {
 
 	// Measure reconciliation duration
 	start := time.Now()
-	if err := c.reconciler(loggerCtx, obj); err != nil {
-		c.logger.Error(err, "failed to reconcile object", "key", key)
+	if err := c.reconciler(loggerCtx, item); err != nil {
+		c.logger.Error(err, "failed to reconcile object")
 
 		// Increment the reconcile errors metric
 		reconcileErrors.WithLabelValues(c.opts.name).Inc()
@@ -399,37 +408,4 @@ func (c *controller) processNextItem() bool {
 	reconcileDuration.WithLabelValues(c.opts.name).Observe(time.Since(start).Seconds())
 
 	return true
-}
-
-// getObject retrieves an object from the informer indexers using the provided key.
-//
-// This method searches through all registered informers to find the object
-// with the specified key. It returns the object if found, along with a boolean
-// indicating whether the object exists.
-//
-// Parameters:
-//   - key: The key used to look up the object (typically namespace/name format)
-//
-// Returns:
-//   - runtime.Object: The retrieved object, or nil if not found
-//   - bool: true if the object exists, false otherwise
-//   - error: Any error encountered during the lookup
-func (c *controller) getObject(key string) (runtime.Object, bool, error) {
-	// Search through all informers for the object
-	for _, informer := range c.informers {
-		idx := informer.GetIndexer()
-		obj, exists, err := idx.GetByKey(key)
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to get object from indexer: %w", err)
-		}
-		if exists {
-			// Ensure the object is a runtime.Object
-			runtimeObj, ok := obj.(runtime.Object)
-			if !ok {
-				return nil, false, errors.New("object is not a runtime.Object")
-			}
-			return runtimeObj, true, nil
-		}
-	}
-	return nil, false, nil
 }

@@ -18,6 +18,7 @@ package metrics
 import (
 	"io"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -104,9 +105,9 @@ func (s *MetricsTestSuite) TestMetricsEndpoint() {
 		},
 	}
 
-	for _, tc := range testCases {
+	for i, tc := range testCases {
 		s.Run(tc.name, func() {
-			server := NewMetricsServer(9090)
+			server := NewMetricsServer(9090 + i)
 
 			// Register a test metric
 			counter := prometheus.NewCounter(prometheus.CounterOpts{
@@ -125,7 +126,7 @@ func (s *MetricsTestSuite) TestMetricsEndpoint() {
 			}
 
 			// Make a request to the metrics endpoint
-			resp, err := http.Get("http://localhost:9090" + tc.path)
+			resp, err := http.Get("http://localhost:" + strconv.Itoa(9090+i) + tc.path)
 			s.Require().NoError(err)
 			s.Require().Equal(tc.expectedStatus, resp.StatusCode)
 
@@ -170,7 +171,7 @@ func (s *MetricsTestSuite) TestRegisterDuplicateMetric() {
 }
 
 func (s *MetricsTestSuite) TestMetricsServerIdempotency() {
-	server := NewMetricsServer(9090)
+	server := NewMetricsServer(9000)
 
 	// Test Start
 	err := server.Start()
