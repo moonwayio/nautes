@@ -91,3 +91,29 @@ func getGVKForObject(obj runtime.Object, scheme *runtime.Scheme) (schema.GroupVe
 	}
 	return gvks[0], nil
 }
+
+// GVKTransformer creates a transformer function that sets the GroupVersionKind on objects.
+//
+// This transformer is commonly used to ensure that objects have their GVK properly
+// set before being processed by the controller. It's particularly useful when
+// working with objects that may not have their GVK populated, such as those
+// retrieved from partial metadata watches or custom serialization scenarios.
+//
+// The transformer uses the provided scheme to determine the correct GVK for
+// the object type and sets it on the object's ObjectKind. If the GVK cannot
+// be determined, the object is returned unchanged.
+//
+// Parameters:
+//   - scheme: The runtime scheme used for GVK determination
+//
+// Returns:
+//   - TransformerFunc[runtime.Object]: A transformer function that sets GVK on objects
+func GVKTransformer(scheme *runtime.Scheme) TransformerFunc[runtime.Object] {
+	return func(obj runtime.Object) runtime.Object {
+		gvk, err := getGVKForObject(obj, scheme)
+		if err == nil {
+			obj.GetObjectKind().SetGroupVersionKind(gvk)
+		}
+		return obj
+	}
+}

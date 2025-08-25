@@ -131,9 +131,9 @@ func Run() error {
 	//
 	// This function is called for each resource that needs to be reconciled.
 	// In this example, it simply logs information about the pod being reconciled.
-	reconciler := func(ctx context.Context, obj runtime.Object) error {
+	reconciler := func(ctx context.Context, obj controller.Delta[runtime.Object]) error {
 		log := klog.FromContext(ctx)
-		pod, ok := obj.(*corev1.Pod)
+		pod, ok := obj.Object.(*corev1.Pod)
 		if !ok {
 			return errors.New("object is not a pod")
 		}
@@ -160,7 +160,7 @@ func Run() error {
 		WatchFunc: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
 			return clientset.CoreV1().Pods("kube-system").Watch(ctx, options)
 		},
-	})
+	}, nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to add retriever: %w", err)
 	}
