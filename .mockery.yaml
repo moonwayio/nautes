@@ -7,5 +7,4 @@ packages:
       dir: "{{.InterfaceDir}}/mocks"
       filename: "mock_{{.InterfaceName | snakecase}}.go"
       recursive: true
-      include-interface-regex: ".*"
-      exclude-interface-regex: ".*Func"
+      include-interface-regex: "^Leader$"
