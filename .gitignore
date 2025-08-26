@@ -1,8 +1,3 @@
-# Exclude generated files
-*.gen.go
-**/mocks/
-**/gen/
-
 # Exclude vendor directory
 vendor/
 

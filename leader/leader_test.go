@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"k8s.io/client-go/kubernetes/fake"
 
-	mock_event "github.com/moonwayio/nautes/event/mocks"
+	"github.com/moonwayio/nautes/event"
 )
 
 type LeaderTestSuite struct {
@@ -49,6 +49,10 @@ func (t *testSubscriber) OnStopLeading() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	*t.callbackCalls = append(*t.callbackCalls, false)
+}
+
+type testEventRecorder struct {
+	event.Recorder
 }
 
 func (s *LeaderTestSuite) TestNewLeader() {
@@ -121,7 +125,7 @@ func (s *LeaderTestSuite) TestNewLeader() {
 				WithRenewDeadline(20 * time.Second),
 				WithRetryPeriod(5 * time.Second),
 				WithReleaseOnCancel(true),
-				WithEventRecorder(mock_event.NewMockRecorder(s.T())),
+				WithEventRecorder(&testEventRecorder{}),
 			},
 			err: "",
 		},
