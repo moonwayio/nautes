@@ -70,6 +70,7 @@ func (s *ControllerTestSuite) TestNewController() {
 				WithResyncInterval(30 * time.Second),
 				WithConcurrency(5),
 				WithScheme(runtime.NewScheme()),
+				WithMaxRetries(10),
 			},
 			err: "",
 		},
@@ -115,7 +116,6 @@ func (s *ControllerTestSuite) TestStartAndStopController() {
 		name            string
 		reconciler      Reconciler[*corev1.Pod]
 		expectReconcile bool
-		expectError     bool
 	}
 
 	testCases := []testCase{
@@ -125,7 +125,6 @@ func (s *ControllerTestSuite) TestStartAndStopController() {
 				return nil
 			},
 			expectReconcile: true,
-			expectError:     false,
 		},
 		{
 			name: "ReconciliationWithErrorShouldStillComplete",
@@ -133,7 +132,6 @@ func (s *ControllerTestSuite) TestStartAndStopController() {
 				return errors.New("test error")
 			},
 			expectReconcile: true,
-			expectError:     true,
 		},
 	}
 
@@ -150,48 +148,51 @@ func (s *ControllerTestSuite) TestStartAndStopController() {
 			}, metav1.CreateOptions{})
 			s.Require().NoError(err)
 
-			ch := make(chan struct{})
+			for i := range 2 {
+				ch := make(chan struct{})
 
-			// Wrap the reconciler to signal completion
-			wrappedReconciler := func(ctx context.Context, obj Delta[*corev1.Pod]) error {
-				defer close(ch)
-				return tc.reconciler(ctx, obj)
-			}
-
-			controller, err := NewController(
-				wrappedReconciler,
-				WithName("test"),
-			)
-			s.Require().NoError(err)
-
-			// Create a mock retriever
-			retriever := &ListerWatcher{
-				ListFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
-					return client.CoreV1().Pods("default").List(ctx, options)
-				},
-				WatchFunc: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
-					return client.CoreV1().Pods("default").Watch(ctx, options)
-				},
-			}
-
-			err = controller.AddRetriever(retriever, nil, nil)
-			s.Require().NoError(err)
-
-			// Start the controller
-			err = controller.Start()
-			s.Require().NoError(err)
-
-			if tc.expectReconcile {
-				select {
-				case <-ch:
-				case <-time.After(ReconcileTimeout):
-					s.Fail("reconciler did not run")
+				// Wrap the reconciler to signal completion
+				wrappedReconciler := func(ctx context.Context, obj Delta[*corev1.Pod]) error {
+					defer close(ch)
+					return tc.reconciler(ctx, obj)
 				}
-			}
 
-			// Stop the controller
-			err = controller.Stop()
-			s.Require().NoError(err)
+				controller, err := NewController(
+					wrappedReconciler,
+					WithName("test"),
+					WithMaxRetries(i),
+				)
+				s.Require().NoError(err)
+
+				// Create a mock retriever
+				retriever := &ListerWatcher{
+					ListFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+						return client.CoreV1().Pods("default").List(ctx, options)
+					},
+					WatchFunc: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+						return client.CoreV1().Pods("default").Watch(ctx, options)
+					},
+				}
+
+				err = controller.AddRetriever(retriever, nil, nil)
+				s.Require().NoError(err)
+
+				// Start the controller
+				err = controller.Start()
+				s.Require().NoError(err)
+
+				if tc.expectReconcile {
+					select {
+					case <-ch:
+					case <-time.After(ReconcileTimeout):
+						s.Fail("reconciler did not run")
+					}
+				}
+
+				// Stop the controller
+				err = controller.Stop()
+				s.Require().NoError(err)
+			}
 		})
 	}
 }
