@@ -51,7 +51,7 @@ const (
 //
 // Returns:
 //   - bool: true if the event should be processed, false to discard it
-type FilterFunc[T comparable] func(T) bool
+type FilterFunc[T Object] func(T) bool
 
 // TransformerFunc is a function type that modifies objects before they are queued.
 //
@@ -64,14 +64,14 @@ type FilterFunc[T comparable] func(T) bool
 //
 // Returns:
 //   - T: The transformed object
-type TransformerFunc[T comparable] func(T) T
+type TransformerFunc[T Object] func(T) T
 
 // Delta represents a change event with metadata.
 //
 // Delta encapsulates a Kubernetes resource event with its type, the affected
 // object, and a timestamp. This structure is used throughout the controller's
 // event processing pipeline to maintain consistency and provide context.
-type Delta[T comparable] struct {
+type Delta[T Object] struct {
 	// Type indicates the kind of event (add, update, delete)
 	Type EventType
 	// Object is the Kubernetes resource that was affected
@@ -89,7 +89,7 @@ type Delta[T comparable] struct {
 //
 // The EventHandler is concurrency safe and can be used with multiple informers
 // simultaneously.
-type EventHandler[T comparable] struct {
+type EventHandler[T Object] struct {
 	queue        workqueue.TypedInterface[Delta[T]]
 	filters      []FilterFunc[T]
 	transformers []TransformerFunc[T]
@@ -111,7 +111,7 @@ type EventHandler[T comparable] struct {
 //
 // Returns:
 //   - cache.ResourceEventHandler: An event handler ready for use with informers
-func NewEventHandler[T comparable](
+func NewEventHandler[T Object](
 	queue workqueue.TypedInterface[Delta[T]],
 	filters []FilterFunc[T],
 	transformers []TransformerFunc[T],
@@ -133,7 +133,7 @@ func NewEventHandler[T comparable](
 //
 // Parameters:
 //   - obj: The newly created resource
-//   - isInInitialList: Whether this event is part of the initial list (unused)
+//   - isInInitialList: Whether this event is part of the initial list (not used in this implementation)
 func (e *EventHandler[T]) OnAdd(obj any, _ bool) {
 	e.handle(EventAdd, obj)
 }
@@ -145,7 +145,7 @@ func (e *EventHandler[T]) OnAdd(obj any, _ bool) {
 // before enqueuing it for reconciliation.
 //
 // Parameters:
-//   - oldObj: The previous version of the resource (unused)
+//   - oldObj: The previous version of the resource (not used in this implementation)
 //   - newObj: The updated version of the resource
 func (e *EventHandler[T]) OnUpdate(_, newObj any) {
 	e.handle(EventUpdate, newObj)
@@ -182,7 +182,12 @@ func (e *EventHandler[T]) handle(event EventType, obj any) {
 	// Type assertion to ensure the object is of the expected type
 	typedObj, ok := obj.(T)
 	if !ok {
-		e.logger.Error(fmt.Errorf("object is not of type %T", obj), "object", obj)
+		e.logger.Error(
+			fmt.Errorf("object is not of type %T", *new(T)),
+			"could not assert object type",
+			"object",
+			obj,
+		)
 		return
 	}
 

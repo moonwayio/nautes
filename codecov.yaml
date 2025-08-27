@@ -11,7 +11,7 @@ coverage:
         threshold: 1%
 
 ignore:
-  - "**/mocks"
+  - "**/mocks/**"
   - "**/*.gen.go"
   - "**/*.pb.go"
   - "**/.gen"

@@ -60,6 +60,12 @@ type options struct {
 	// is active. If set to false, the controller will start immediately when the
 	// manager starts.
 	needsLeaderElection bool
+
+	// maxRetries sets the maximum number of retries for failed reconciliations
+	//
+	// The maxRetries parameter determines how many times a failed reconciliation
+	// should be retried before giving up. A value of 0 disables retries.
+	maxRetries int
 }
 
 // OptionFunc is a function that configures controller options.
@@ -180,5 +186,21 @@ func WithScheme(scheme *runtime.Scheme) OptionFunc {
 func WithNeedsLeaderElection(needsLeaderElection bool) OptionFunc {
 	return func(o *options) {
 		o.needsLeaderElection = needsLeaderElection
+	}
+}
+
+// WithMaxRetries sets the maximum number of retries for failed reconciliations.
+//
+// The maxRetries parameter determines how many times a failed reconciliation
+// should be retried before giving up. A value of 0 disables retries.
+//
+// Parameters:
+//   - maxRetries: The maximum number of retries for failed reconciliations
+//
+// Returns:
+//   - OptionFunc: A function that sets the maximum number of retries
+func WithMaxRetries(maxRetries int) OptionFunc {
+	return func(o *options) {
+		o.maxRetries = maxRetries
 	}
 }
