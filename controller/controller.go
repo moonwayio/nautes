@@ -87,6 +87,19 @@ func init() {
 	)
 }
 
+// Object is a common interface for Kubernetes objects.
+//
+// It extends the runtime.Object interface to include the comparable
+// constraint, allowing for type-safe comparisons of objects.
+//
+// This interface is used to define the type of objects that can be
+// reconciled by the controller.
+type Object interface {
+	runtime.Object
+	metav1.Object
+	comparable
+}
+
 // Reconciler function type for handling reconciliation logic.
 //
 // A Reconciler is a function that takes a Kubernetes object and performs the
@@ -99,7 +112,7 @@ func init() {
 //
 // Returns:
 //   - error: Any error encountered during reconciliation
-type Reconciler func(ctx context.Context, obj Delta[runtime.Object]) error
+type Reconciler[T Object] func(ctx context.Context, obj Delta[T]) error
 
 // Controller implements the watch–queue–reconcile loop.
 //
@@ -117,7 +130,7 @@ type Reconciler func(ctx context.Context, obj Delta[runtime.Object]) error
 //
 // Implementations of this interface are concurrency safe and can be used concurrently
 // from multiple goroutines.
-type Controller interface {
+type Controller[T Object] interface {
 	component.Component
 
 	// AddRetriever adds a resource retriever to the controller with optional filtering and transformation.
@@ -144,8 +157,8 @@ type Controller interface {
 	//   - error: Any error encountered while adding the retriever
 	AddRetriever(
 		retriever Retriever,
-		filters []FilterFunc[runtime.Object],
-		transformers []TransformerFunc[runtime.Object],
+		filters []FilterFunc[T],
+		transformers []TransformerFunc[T],
 	) error
 }
 
@@ -158,10 +171,10 @@ type Controller interface {
 // The controller supports advanced event processing with filtering and transformation
 // capabilities, allowing for fine-grained control over which events are processed
 // and how objects are modified before reconciliation.
-type controller struct {
+type controller[T Object] struct {
 	opts       options
-	reconciler Reconciler
-	queue      workqueue.TypedRateLimitingInterface[Delta[runtime.Object]]
+	reconciler Reconciler[T]
+	queue      workqueue.TypedRateLimitingInterface[Delta[T]]
 	informers  []cache.SharedIndexInformer
 	logger     klog.Logger
 
@@ -183,7 +196,7 @@ type controller struct {
 // Returns:
 //   - Controller: A new controller instance ready for use
 //   - error: Any error encountered during initialization
-func NewController(reconciler Reconciler, opts ...OptionFunc) (Controller, error) {
+func NewController[T Object](reconciler Reconciler[T], opts ...OptionFunc) (Controller[T], error) {
 	var o options
 	for _, opt := range opts {
 		opt(&o)
@@ -193,11 +206,11 @@ func NewController(reconciler Reconciler, opts ...OptionFunc) (Controller, error
 		return nil, err
 	}
 
-	return &controller{
+	return &controller[T]{
 		opts:       o,
 		reconciler: reconciler,
 		queue: workqueue.NewTypedRateLimitingQueue(
-			workqueue.DefaultTypedControllerRateLimiter[Delta[runtime.Object]](),
+			workqueue.DefaultTypedControllerRateLimiter[Delta[T]](),
 		),
 		informers: make([]cache.SharedIndexInformer, 0),
 		logger:    klog.Background().WithValues("component", "controller/"+o.name),
@@ -228,10 +241,10 @@ func NewController(reconciler Reconciler, opts ...OptionFunc) (Controller, error
 // Returns:
 //   - error: Any error encountered while setting up the informer or
 //     registering event handlers
-func (c *controller) AddRetriever(
+func (c *controller[T]) AddRetriever(
 	retriever Retriever,
-	filters []FilterFunc[runtime.Object],
-	transformers []TransformerFunc[runtime.Object],
+	filters []FilterFunc[T],
+	transformers []TransformerFunc[T],
 ) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -258,7 +271,7 @@ func (c *controller) AddRetriever(
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
 
-	transformers = append(transformers, GVKTransformer(c.opts.scheme))
+	transformers = append(transformers, GVKTransformer[T](c.opts.scheme))
 
 	eventHandler := NewEventHandler(c.queue, filters, transformers, c.logger)
 
@@ -273,7 +286,7 @@ func (c *controller) AddRetriever(
 }
 
 // Start starts the controller.
-func (c *controller) Start() error {
+func (c *controller[T]) Start() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	defer utilruntime.HandleCrash()
@@ -308,7 +321,7 @@ func (c *controller) Start() error {
 }
 
 // Stop stops the controller.
-func (c *controller) Stop() error {
+func (c *controller[T]) Stop() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -332,7 +345,7 @@ func (c *controller) Stop() error {
 //
 // Returns:
 //   - string: The controller name in the format "controller/{name}"
-func (c *controller) GetName() string {
+func (c *controller[T]) GetName() string {
 	return "controller/" + c.opts.name
 }
 
@@ -344,7 +357,7 @@ func (c *controller) GetName() string {
 //
 // Returns:
 //   - bool: true if the controller needs leader election, false otherwise
-func (c *controller) NeedsLeaderElection() bool {
+func (c *controller[T]) NeedsLeaderElection() bool {
 	return c.opts.needsLeaderElection
 }
 
@@ -356,7 +369,7 @@ func (c *controller) NeedsLeaderElection() bool {
 //
 // The worker will continue running until the controller is stopped or the
 // work queue is shut down.
-func (c *controller) runWorker() {
+func (c *controller[T]) runWorker() {
 	for c.processNextItem() {
 		// Process next item from the queue. If the worker is shutting down, break the loop.
 	}
@@ -375,7 +388,7 @@ func (c *controller) runWorker() {
 //
 // Returns:
 //   - bool: true if the worker should continue, false if it should stop
-func (c *controller) processNextItem() bool {
+func (c *controller[T]) processNextItem() bool {
 	ctx := context.Background()
 
 	// Get the next item from the work queue
@@ -394,14 +407,28 @@ func (c *controller) processNextItem() bool {
 
 	// Measure reconciliation duration
 	start := time.Now()
-	if err := c.reconciler(loggerCtx, item); err != nil {
-		c.logger.Error(err, "failed to reconcile object")
+	if err := c.reconciler(loggerCtx, item); err == nil {
+		// Forget the item
+		c.queue.Forget(item)
+
+		// Increment the reconcile successes metric
+		reconcileSuccesses.WithLabelValues(c.opts.name).Inc()
+	} else if c.queue.NumRequeues(item) < c.opts.maxRetries {
+		c.logger.V(1).Error(err, "failed to reconcile object, requeuing", "item", item)
+
+		// Requeue the item
+		c.queue.AddRateLimited(item)
 
 		// Increment the reconcile errors metric
 		reconcileErrors.WithLabelValues(c.opts.name).Inc()
 	} else {
-		// Increment the reconcile successes metric
-		reconcileSuccesses.WithLabelValues(c.opts.name).Inc()
+		c.logger.Error(err, "failed to reconcile object")
+
+		// Forget the item
+		c.queue.Forget(item)
+
+		// Increment the reconcile errors metric
+		reconcileErrors.WithLabelValues(c.opts.name).Inc()
 	}
 
 	// Observe the reconcile duration metric

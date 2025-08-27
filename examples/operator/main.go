@@ -40,7 +40,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -165,12 +164,9 @@ func Run() error {
 	scheme := scheme.Scheme
 
 	// Define the reconciler function for the controller
-	reconciler := func(ctx context.Context, obj controller.Delta[runtime.Object]) error {
+	reconciler := func(ctx context.Context, delta controller.Delta[*corev1.Pod]) error {
 		log := klog.FromContext(ctx)
-		pod, ok := obj.Object.(*corev1.Pod)
-		if !ok {
-			return errors.New("object is not a pod")
-		}
+		pod := delta.Object
 		log.Info("reconciling pod", "pod", pod.Name, "status", pod.Status.Phase)
 		// Increment the observed pod counter metric
 		observedPodCount.WithLabelValues(pod.Namespace, pod.Name).Inc()

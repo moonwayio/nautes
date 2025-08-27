@@ -42,7 +42,7 @@ const defaultNS = "default"
 func (s *ControllerTestSuite) TestNewController() {
 	type testCase struct {
 		name       string
-		reconciler Reconciler
+		reconciler Reconciler[*corev1.Pod]
 		opts       []OptionFunc
 		err        string
 	}
@@ -50,13 +50,13 @@ func (s *ControllerTestSuite) TestNewController() {
 	testCases := []testCase{
 		{
 			name:       "NoNameShouldReturnError",
-			reconciler: func(_ context.Context, _ Delta[runtime.Object]) error { return nil },
+			reconciler: func(_ context.Context, _ Delta[*corev1.Pod]) error { return nil },
 			opts:       []OptionFunc{},
 			err:        "name is required",
 		},
 		{
 			name:       "WithNameShouldSucceed",
-			reconciler: func(_ context.Context, _ Delta[runtime.Object]) error { return nil },
+			reconciler: func(_ context.Context, _ Delta[*corev1.Pod]) error { return nil },
 			opts: []OptionFunc{
 				WithName("test"),
 			},
@@ -64,7 +64,7 @@ func (s *ControllerTestSuite) TestNewController() {
 		},
 		{
 			name:       "WithAllOptionsShouldSucceed",
-			reconciler: func(_ context.Context, _ Delta[runtime.Object]) error { return nil },
+			reconciler: func(_ context.Context, _ Delta[*corev1.Pod]) error { return nil },
 			opts: []OptionFunc{
 				WithName("test"),
 				WithResyncInterval(30 * time.Second),
@@ -92,7 +92,7 @@ func (s *ControllerTestSuite) TestNewController() {
 func (s *ControllerTestSuite) TestAddRetriever() {
 	clientset := fake.NewSimpleClientset()
 
-	reconciler := func(_ context.Context, _ Delta[runtime.Object]) error { return nil }
+	reconciler := func(_ context.Context, _ Delta[*corev1.Pod]) error { return nil }
 	controller, err := NewController(reconciler, WithName("test"))
 	s.Require().NoError(err)
 
@@ -113,7 +113,7 @@ func (s *ControllerTestSuite) TestAddRetriever() {
 func (s *ControllerTestSuite) TestStartAndStopController() {
 	type testCase struct {
 		name            string
-		reconciler      Reconciler
+		reconciler      Reconciler[*corev1.Pod]
 		expectReconcile bool
 		expectError     bool
 	}
@@ -121,7 +121,7 @@ func (s *ControllerTestSuite) TestStartAndStopController() {
 	testCases := []testCase{
 		{
 			name: "NormalReconciliationShouldSucceed",
-			reconciler: func(_ context.Context, _ Delta[runtime.Object]) error {
+			reconciler: func(_ context.Context, _ Delta[*corev1.Pod]) error {
 				return nil
 			},
 			expectReconcile: true,
@@ -129,7 +129,7 @@ func (s *ControllerTestSuite) TestStartAndStopController() {
 		},
 		{
 			name: "ReconciliationWithErrorShouldStillComplete",
-			reconciler: func(_ context.Context, _ Delta[runtime.Object]) error {
+			reconciler: func(_ context.Context, _ Delta[*corev1.Pod]) error {
 				return errors.New("test error")
 			},
 			expectReconcile: true,
@@ -153,7 +153,7 @@ func (s *ControllerTestSuite) TestStartAndStopController() {
 			ch := make(chan struct{})
 
 			// Wrap the reconciler to signal completion
-			wrappedReconciler := func(ctx context.Context, obj Delta[runtime.Object]) error {
+			wrappedReconciler := func(ctx context.Context, obj Delta[*corev1.Pod]) error {
 				defer close(ch)
 				return tc.reconciler(ctx, obj)
 			}
@@ -241,7 +241,7 @@ func (s *ControllerTestSuite) TestControllerStartAndStopWithDifferentConfigurati
 
 			ch := make(chan struct{})
 
-			reconciler := func(_ context.Context, _ Delta[runtime.Object]) error {
+			reconciler := func(_ context.Context, _ Delta[*corev1.Pod]) error {
 				defer close(ch)
 				return nil
 			}
@@ -344,7 +344,7 @@ func (s *ControllerTestSuite) TestControllerStartAndStopWithGVKMeta() {
 			client := fake.NewSimpleClientset()
 			ch := make(chan struct{})
 
-			reconciler := func(_ context.Context, _ Delta[runtime.Object]) error {
+			reconciler := func(_ context.Context, _ Delta[*metav1.PartialObjectMetadata]) error {
 				defer close(ch)
 				return nil
 			}
@@ -382,14 +382,14 @@ func (s *ControllerTestSuite) TestControllerStartAndStopWithGVKMeta() {
 }
 
 func (s *ControllerTestSuite) TestGetName() {
-	reconciler := func(_ context.Context, _ Delta[runtime.Object]) error { return nil }
+	reconciler := func(_ context.Context, _ Delta[*corev1.Pod]) error { return nil }
 	controller, err := NewController(reconciler, WithName("test"))
 	s.Require().NoError(err)
 	s.Require().Equal("controller/test", controller.GetName())
 }
 
 func (s *ControllerTestSuite) TestControllerIdempotency() {
-	reconciler := func(_ context.Context, _ Delta[runtime.Object]) error { return nil }
+	reconciler := func(_ context.Context, _ Delta[*corev1.Pod]) error { return nil }
 
 	controller, err := NewController(reconciler, WithName("test"))
 	s.Require().NoError(err)
@@ -440,7 +440,7 @@ func (s *ControllerTestSuite) TestControllerNeedsLeaderElection() {
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			controller, err := NewController(
-				func(_ context.Context, _ Delta[runtime.Object]) error { return nil },
+				func(_ context.Context, _ Delta[*corev1.Pod]) error { return nil },
 				tc.opts...)
 			s.Require().NoError(err)
 			s.Require().
@@ -452,7 +452,7 @@ func (s *ControllerTestSuite) TestControllerNeedsLeaderElection() {
 func (s *ControllerTestSuite) TestControllerWithFiltering() {
 	type testCase struct {
 		name           string
-		filters        []FilterFunc[runtime.Object]
+		filters        []FilterFunc[*corev1.Pod]
 		expectedEvents int
 		description    string
 	}
@@ -466,12 +466,9 @@ func (s *ControllerTestSuite) TestControllerWithFiltering() {
 		},
 		{
 			name: "FilterByNamespaceShouldProcessMatchingEvents",
-			filters: []FilterFunc[runtime.Object]{
-				func(obj runtime.Object) bool {
-					if pod, ok := obj.(*corev1.Pod); ok {
-						return pod.Namespace == defaultNS
-					}
-					return false
+			filters: []FilterFunc[*corev1.Pod]{
+				func(obj *corev1.Pod) bool {
+					return obj.Namespace == defaultNS
 				},
 			},
 			expectedEvents: 1,
@@ -479,12 +476,9 @@ func (s *ControllerTestSuite) TestControllerWithFiltering() {
 		},
 		{
 			name: "FilterByNamespaceShouldRejectNonMatchingEvents",
-			filters: []FilterFunc[runtime.Object]{
-				func(obj runtime.Object) bool {
-					if pod, ok := obj.(*corev1.Pod); ok {
-						return pod.Namespace == "other-namespace"
-					}
-					return false
+			filters: []FilterFunc[*corev1.Pod]{
+				func(obj *corev1.Pod) bool {
+					return obj.Namespace == "other-namespace"
 				},
 			},
 			expectedEvents: 0,
@@ -492,18 +486,12 @@ func (s *ControllerTestSuite) TestControllerWithFiltering() {
 		},
 		{
 			name: "MultipleFiltersShouldAllPass",
-			filters: []FilterFunc[runtime.Object]{
-				func(obj runtime.Object) bool {
-					if pod, ok := obj.(*corev1.Pod); ok {
-						return pod.Namespace == defaultNS
-					}
-					return false
+			filters: []FilterFunc[*corev1.Pod]{
+				func(obj *corev1.Pod) bool {
+					return obj.Namespace == defaultNS
 				},
-				func(obj runtime.Object) bool {
-					if pod, ok := obj.(*corev1.Pod); ok {
-						return pod.Name == "test"
-					}
-					return false
+				func(obj *corev1.Pod) bool {
+					return obj.Name == "test"
 				},
 			},
 			expectedEvents: 1,
@@ -511,18 +499,12 @@ func (s *ControllerTestSuite) TestControllerWithFiltering() {
 		},
 		{
 			name: "MultipleFiltersShouldRejectIfAnyFails",
-			filters: []FilterFunc[runtime.Object]{
-				func(obj runtime.Object) bool {
-					if pod, ok := obj.(*corev1.Pod); ok {
-						return pod.Namespace == defaultNS
-					}
-					return false
+			filters: []FilterFunc[*corev1.Pod]{
+				func(obj *corev1.Pod) bool {
+					return obj.Namespace == defaultNS
 				},
-				func(obj runtime.Object) bool {
-					if pod, ok := obj.(*corev1.Pod); ok {
-						return pod.Name == "non-existent"
-					}
-					return false
+				func(obj *corev1.Pod) bool {
+					return obj.Name == "non-existent"
 				},
 			},
 			expectedEvents: 0,
@@ -546,7 +528,7 @@ func (s *ControllerTestSuite) TestControllerWithFiltering() {
 			eventsProcessed := 0
 			ch := make(chan struct{})
 
-			reconciler := func(_ context.Context, _ Delta[runtime.Object]) error {
+			reconciler := func(_ context.Context, _ Delta[*corev1.Pod]) error {
 				eventsProcessed++
 				defer close(ch)
 				return nil
@@ -596,7 +578,7 @@ func (s *ControllerTestSuite) TestControllerWithFiltering() {
 func (s *ControllerTestSuite) TestControllerWithTransformation() {
 	type testCase struct {
 		name           string
-		transformers   []TransformerFunc[runtime.Object]
+		transformers   []TransformerFunc[*corev1.Pod]
 		expectedName   string
 		expectedLabels map[string]string
 		description    string
@@ -612,12 +594,9 @@ func (s *ControllerTestSuite) TestControllerWithTransformation() {
 		},
 		{
 			name: "SingleTransformerShouldModifyObject",
-			transformers: []TransformerFunc[runtime.Object]{
-				func(obj runtime.Object) runtime.Object {
-					if pod, ok := obj.(*corev1.Pod); ok {
-						pod.Name = "transformed"
-						return pod
-					}
+			transformers: []TransformerFunc[*corev1.Pod]{
+				func(obj *corev1.Pod) *corev1.Pod {
+					obj.Name = "transformed"
 					return obj
 				},
 			},
@@ -627,19 +606,13 @@ func (s *ControllerTestSuite) TestControllerWithTransformation() {
 		},
 		{
 			name: "MultipleTransformersShouldApplyInOrder",
-			transformers: []TransformerFunc[runtime.Object]{
-				func(obj runtime.Object) runtime.Object {
-					if pod, ok := obj.(*corev1.Pod); ok {
-						pod.Name = "first-transform"
-						return pod
-					}
+			transformers: []TransformerFunc[*corev1.Pod]{
+				func(obj *corev1.Pod) *corev1.Pod {
+					obj.Name = "first-transform"
 					return obj
 				},
-				func(obj runtime.Object) runtime.Object {
-					if pod, ok := obj.(*corev1.Pod); ok {
-						pod.Name = "second-transform"
-						return pod
-					}
+				func(obj *corev1.Pod) *corev1.Pod {
+					obj.Name = "second-transform"
 					return obj
 				},
 			},
@@ -649,16 +622,13 @@ func (s *ControllerTestSuite) TestControllerWithTransformation() {
 		},
 		{
 			name: "TransformerShouldAddLabels",
-			transformers: []TransformerFunc[runtime.Object]{
-				func(obj runtime.Object) runtime.Object {
-					if pod, ok := obj.(*corev1.Pod); ok {
-						if pod.Labels == nil {
-							pod.Labels = make(map[string]string)
-						}
-						pod.Labels["transformed"] = "true"
-						pod.Labels["test-label"] = "test-value"
-						return pod
+			transformers: []TransformerFunc[*corev1.Pod]{
+				func(obj *corev1.Pod) *corev1.Pod {
+					if obj.Labels == nil {
+						obj.Labels = make(map[string]string)
 					}
+					obj.Labels["transformed"] = "true"
+					obj.Labels["test-label"] = "test-value"
 					return obj
 				},
 			},
@@ -684,10 +654,10 @@ func (s *ControllerTestSuite) TestControllerWithTransformation() {
 			}, metav1.CreateOptions{})
 			s.Require().NoError(err)
 
-			var processedObject runtime.Object
+			var processedObject *corev1.Pod
 			ch := make(chan struct{})
 
-			reconciler := func(_ context.Context, delta Delta[runtime.Object]) error {
+			reconciler := func(_ context.Context, delta Delta[*corev1.Pod]) error {
 				processedObject = delta.Object
 				defer close(ch)
 				return nil
@@ -721,13 +691,9 @@ func (s *ControllerTestSuite) TestControllerWithTransformation() {
 
 			// Verify the transformation
 			s.Require().NotNil(processedObject, "Object should have been processed")
-			if pod, ok := processedObject.(*corev1.Pod); ok {
-				s.Require().Equal(tc.expectedName, pod.Name, tc.description)
-				if tc.expectedLabels != nil {
-					s.Require().Equal(tc.expectedLabels, pod.Labels, tc.description)
-				}
-			} else {
-				s.Fail("Processed object should be a Pod")
+			s.Require().Equal(tc.expectedName, processedObject.Name, tc.description)
+			if tc.expectedLabels != nil {
+				s.Require().Equal(tc.expectedLabels, processedObject.Labels, tc.description)
 			}
 
 			// Stop the controller
