@@ -182,7 +182,12 @@ func (e *EventHandler[T]) handle(event EventType, obj any) {
 	// Type assertion to ensure the object is of the expected type
 	typedObj, ok := obj.(T)
 	if !ok {
-		e.logger.Error(fmt.Errorf("object is not of type %T", *new(T)), "object", obj)
+		e.logger.Error(
+			fmt.Errorf("object is not of type %T", *new(T)),
+			"could not assert object type",
+			"object",
+			obj,
+		)
 		return
 	}
 
