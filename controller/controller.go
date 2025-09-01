@@ -406,13 +406,6 @@ func (c *controller[T]) processNextItem() bool {
 
 	// Measure reconciliation duration
 	start := time.Now()
-	c.logger.Info(
-		"num requeues",
-		"num",
-		c.queue.NumRequeues(item),
-		"max retries",
-		c.opts.maxRetries,
-	)
 	if err := c.reconciler(loggerCtx, item); err == nil {
 		// Forget the item
 		c.queue.Forget(item)
