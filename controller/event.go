@@ -51,7 +51,7 @@ const (
 //
 // Returns:
 //   - bool: true if the event should be processed, false to discard it
-type FilterFunc[T Object] func(T) bool
+type FilterFunc[T Object] func(Delta[T]) bool
 
 // TransformerFunc is a function type that modifies objects before they are queued.
 //
@@ -64,7 +64,7 @@ type FilterFunc[T Object] func(T) bool
 //
 // Returns:
 //   - T: The transformed object
-type TransformerFunc[T Object] func(T) T
+type TransformerFunc[T Object] func(Delta[T]) Delta[T]
 
 // Delta represents a change event with metadata.
 //
@@ -160,6 +160,10 @@ func (e *EventHandler[T]) OnUpdate(_, newObj any) {
 // Parameters:
 //   - obj: The deleted resource
 func (e *EventHandler[T]) OnDelete(obj any) {
+	if deleted, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		e.handle(EventDelete, deleted.Obj)
+		return
+	}
 	e.handle(EventDelete, obj)
 }
 
@@ -191,24 +195,25 @@ func (e *EventHandler[T]) handle(event EventType, obj any) {
 		return
 	}
 
+	// Create the Delta
+	delta := Delta[T]{
+		Type:      event,
+		Object:    typedObj,
+		Timestamp: time.Now(),
+	}
+
 	// Apply filters to determine if the event should be processed
 	for _, filter := range e.filters {
-		if !filter(typedObj) {
+		if !filter(delta) {
 			return
 		}
 	}
 
 	// Apply transformers to modify the object
 	for _, transformer := range e.transformers {
-		typedObj = transformer(typedObj)
+		delta = transformer(delta)
 	}
 
-	// Create the Delta and enqueue it for reconciliation
-	item := Delta[T]{
-		Type:      event,
-		Object:    typedObj,
-		Timestamp: time.Now(),
-	}
-
-	e.queue.Add(item)
+	// Enqueue the Delta for reconciliation
+	e.queue.Add(delta)
 }

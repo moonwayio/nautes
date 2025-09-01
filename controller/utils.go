@@ -109,11 +109,11 @@ func getGVKForObject(obj runtime.Object, scheme *runtime.Scheme) (schema.GroupVe
 // Returns:
 //   - TransformerFunc[T]: A transformer function that sets GVK on objects
 func GVKTransformer[T Object](scheme *runtime.Scheme) TransformerFunc[T] {
-	return func(obj T) T {
-		gvk, err := getGVKForObject(obj, scheme)
+	return func(delta Delta[T]) Delta[T] {
+		gvk, err := getGVKForObject(delta.Object, scheme)
 		if err == nil {
-			obj.GetObjectKind().SetGroupVersionKind(gvk)
+			delta.Object.GetObjectKind().SetGroupVersionKind(gvk)
 		}
-		return obj
+		return delta
 	}
 }

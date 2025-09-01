@@ -468,8 +468,8 @@ func (s *ControllerTestSuite) TestControllerWithFiltering() {
 		{
 			name: "FilterByNamespaceShouldProcessMatchingEvents",
 			filters: []FilterFunc[*corev1.Pod]{
-				func(obj *corev1.Pod) bool {
-					return obj.Namespace == defaultNS
+				func(delta Delta[*corev1.Pod]) bool {
+					return delta.Object.Namespace == defaultNS
 				},
 			},
 			expectedEvents: 1,
@@ -478,8 +478,8 @@ func (s *ControllerTestSuite) TestControllerWithFiltering() {
 		{
 			name: "FilterByNamespaceShouldRejectNonMatchingEvents",
 			filters: []FilterFunc[*corev1.Pod]{
-				func(obj *corev1.Pod) bool {
-					return obj.Namespace == "other-namespace"
+				func(delta Delta[*corev1.Pod]) bool {
+					return delta.Object.Namespace == "other-namespace"
 				},
 			},
 			expectedEvents: 0,
@@ -488,11 +488,11 @@ func (s *ControllerTestSuite) TestControllerWithFiltering() {
 		{
 			name: "MultipleFiltersShouldAllPass",
 			filters: []FilterFunc[*corev1.Pod]{
-				func(obj *corev1.Pod) bool {
-					return obj.Namespace == defaultNS
+				func(delta Delta[*corev1.Pod]) bool {
+					return delta.Object.Namespace == defaultNS
 				},
-				func(obj *corev1.Pod) bool {
-					return obj.Name == "test"
+				func(delta Delta[*corev1.Pod]) bool {
+					return delta.Object.Name == "test"
 				},
 			},
 			expectedEvents: 1,
@@ -501,11 +501,11 @@ func (s *ControllerTestSuite) TestControllerWithFiltering() {
 		{
 			name: "MultipleFiltersShouldRejectIfAnyFails",
 			filters: []FilterFunc[*corev1.Pod]{
-				func(obj *corev1.Pod) bool {
-					return obj.Namespace == defaultNS
+				func(delta Delta[*corev1.Pod]) bool {
+					return delta.Object.Namespace == defaultNS
 				},
-				func(obj *corev1.Pod) bool {
-					return obj.Name == "non-existent"
+				func(delta Delta[*corev1.Pod]) bool {
+					return delta.Object.Name == "non-existent"
 				},
 			},
 			expectedEvents: 0,
@@ -596,9 +596,9 @@ func (s *ControllerTestSuite) TestControllerWithTransformation() {
 		{
 			name: "SingleTransformerShouldModifyObject",
 			transformers: []TransformerFunc[*corev1.Pod]{
-				func(obj *corev1.Pod) *corev1.Pod {
-					obj.Name = "transformed"
-					return obj
+				func(delta Delta[*corev1.Pod]) Delta[*corev1.Pod] {
+					delta.Object.Name = "transformed"
+					return delta
 				},
 			},
 			expectedName:   "transformed",
@@ -608,13 +608,13 @@ func (s *ControllerTestSuite) TestControllerWithTransformation() {
 		{
 			name: "MultipleTransformersShouldApplyInOrder",
 			transformers: []TransformerFunc[*corev1.Pod]{
-				func(obj *corev1.Pod) *corev1.Pod {
-					obj.Name = "first-transform"
-					return obj
+				func(delta Delta[*corev1.Pod]) Delta[*corev1.Pod] {
+					delta.Object.Name = "first-transform"
+					return delta
 				},
-				func(obj *corev1.Pod) *corev1.Pod {
-					obj.Name = "second-transform"
-					return obj
+				func(delta Delta[*corev1.Pod]) Delta[*corev1.Pod] {
+					delta.Object.Name = "second-transform"
+					return delta
 				},
 			},
 			expectedName:   "second-transform",
@@ -624,13 +624,13 @@ func (s *ControllerTestSuite) TestControllerWithTransformation() {
 		{
 			name: "TransformerShouldAddLabels",
 			transformers: []TransformerFunc[*corev1.Pod]{
-				func(obj *corev1.Pod) *corev1.Pod {
-					if obj.Labels == nil {
-						obj.Labels = make(map[string]string)
+				func(delta Delta[*corev1.Pod]) Delta[*corev1.Pod] {
+					if delta.Object.Labels == nil {
+						delta.Object.Labels = make(map[string]string)
 					}
-					obj.Labels["transformed"] = "true"
-					obj.Labels["test-label"] = "test-value"
-					return obj
+					delta.Object.Labels["transformed"] = "true"
+					delta.Object.Labels["test-label"] = "test-value"
+					return delta
 				},
 			},
 			expectedName: "test",
